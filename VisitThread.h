@@ -44,8 +44,11 @@ public:
         if (e->timerId() == timer.timerId()) {
             save("/tmp/balle2");
             timer.stop();
+            emit done();
         }
     }
+signals:
+    void done();
 public slots:
     void invalidate(const QSet<Path> &paths);
     void onFileParsed(const Path &path, void *unit);

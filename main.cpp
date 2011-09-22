@@ -3,11 +3,9 @@
 #include <QList>
 #include <stdio.h>
 #include "Daemon.h"
-#include "Client.h"
 #include "Utils.h"
 #include <syslog.h>
 #include "ArgParser.h"
-#include "TemporaryFiles.h"
 
 void syslogMsgHandler(QtMsgType t, const char* str)
 {
@@ -61,28 +59,6 @@ void syslogMsgHandler(QtMsgType t, const char* str)
     syslog(priority, "%s (%s)\n", str, names[t]);
 }
 
-static inline bool daemonize(Daemon *daemon, int timeout)
-{
-    {
-        Client client;
-        if (client.connect(timeout)) {
-            client.exec(QHash<QByteArray, QVariant>(), QList<QByteArray>() << "quit");
-        }
-    }
-
-    // Ensure that the TemporaryFiles singleton gets initialized in a thread safe manner
-    TemporaryFiles::instance()->init();
-
-    qInstallMsgHandler(syslogMsgHandler);
-    for (int i=0; i<10; ++i) {
-        if (daemon->start()) {
-            return true;
-        }
-        usleep(timeout * 1000);
-    }
-    return false;
-}
-
 int main(int argc, char** argv)
 {
     if (QFile::exists("/tmp/rtags.log")) {
@@ -117,58 +93,19 @@ int main(int argc, char** argv)
 
     QList<QByteArray> freeArgs = args.freeArguments();
     if (freeArgs.isEmpty())
-        freeArgs.append("daemonize");
+        freeArgs.append("syntax");
 
-    QByteArray cmd = freeArgs.first();
     QCoreApplication::setOrganizationDomain("www.rtags.com");
     QCoreApplication::setOrganizationName("rtags");
     QCoreApplication::setApplicationName("rtags");
 
     if (Options::s_verbose)
-        qDebug() << argsmap;
+        qDebug() << argsmap << freeArgs;
 
-    if (cmd == "daemonize") {
-        Daemon daemon;
-        if (daemonize(&daemon, timeout)) {
-            return app.exec();
-        } else {
-            return -2;
-        }
-    } else if (argsmap.contains("replace")) {
-        Daemon daemon;
-        if (!daemonize(&daemon, timeout)) {
-            return -2;
-        }
-
-        const QHash<QByteArray, QVariant> replymap = daemon.runCommand(argsmap, freeArgs);
-        const QByteArray reply = replymap.value("result").toByteArray();
-        if (!reply.isEmpty())
-            printf("%s\n", reply.constData());
-        return app.exec();
-    } else {
-        Client client;
-        if (!client.connect(timeout)) {
-            if (cmd == "quit") {
-                qWarning("Can't connect to rtags daemon");
-                return 0;
-            }
-            if (getenv("RTAGS_AUTOSTART") || argsmap.contains("autostart")) {
-                client.startDaemon(app.arguments());
-                sleep(1); // ### hmmmm
-                if (!client.connect(timeout)) {
-                    qWarning("Can't connect to rtags daemon");
-                    return 1;
-                }
-            }
-        }
-        if (client.isConnected()) {
-            const QHash<QByteArray, QVariant> replymap = client.exec(argsmap, freeArgs);
-            const QByteArray reply = replymap.value("result").toByteArray();
-            if (!reply.isEmpty())
-                printf("%s\n", reply.constData());
-            return 0;
-        }
-    }
-    qWarning("Couldn't connect to daemon");
-    return -1;
+    Daemon daemon;
+    const QHash<QByteArray, QVariant> replymap = daemon.runCommand(argsmap, freeArgs);
+    const QByteArray reply = replymap.value("result").toByteArray();
+    if (!reply.isEmpty())
+        printf("%s\n", reply.constData());
+    return app.exec();
 }
