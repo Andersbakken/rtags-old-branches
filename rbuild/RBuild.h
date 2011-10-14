@@ -7,77 +7,117 @@
 #include "SystemInformation.h"
 #include <QObject>
 
+class CursorKey;
+static inline uint qHash(const CursorKey &key);
 class CursorKey
 {
 public:
+    CursorKey(const CursorKey &other)
+        : d(other.d)
+    {}
     CursorKey()
-        : kind(CXCursor_FirstInvalid), file(0)
+        : d(0)
     {}
     CursorKey(const CXCursor &cursor)
-        : kind(clang_getCursorKind(cursor)), file(0)
+        : d(0)
     {
+        const CXCursorKind kind = clang_getCursorKind(cursor);
         if (!clang_isInvalid(kind)) {
             CXSourceLocation loc = clang_getCursorLocation(cursor);
+            CXFile file;
+            unsigned line, col, off;
             clang_getInstantiationLocation(loc, &file, &line, &col, &off);
-            if (file)
-                fileName = clang_getFileName(file);
+            if (file) {
+                const CXString fn = clang_getFileName(file);
+                char *fileName = realpath(clang_getCString(fn), 0);
+                if (fileName)
+                    d = new CursorKeyData(kind, fileName, line, col, off);
+                clang_disposeString(fn);
+            }
         }
     }
 
-    ~CursorKey()
+    CursorKey &operator=(const CursorKey &other)
     {
-        if (file)
-            clang_disposeString(fileName);
+        d = other.d;
+        return *this;
     }
 
     bool isNull() const
     {
-        return !file;
+        return !d;
     }
+
+    bool isValid() const
+    {
+        return d;
+    }
+
     bool operator<(const CursorKey &other) const
     {
         if (isNull())
             return true;
         if (other.isNull())
             return false;
-        const int ret = strcmp(clang_getCString(fileName), clang_getCString(other.fileName));
+        const int ret = strcmp(d->fileName, other.d->fileName);
         if (ret < 0)
             return true;
         if (ret > 0)
             return false;
-        return kind < other.kind;
+        return d->kind < other.d->kind;
     }
 
     bool operator==(const CursorKey &other) const
     {
         if (isNull())
             return other.isNull();
-        return kind == other.kind && !strcmp(clang_getCString(fileName), clang_getCString(other.fileName));
+        if (other.isNull())
+            return isNull();
+        
+        return d->kind == other.d->kind && !strcmp(d->fileName, other.d->fileName);
     }
+private:
+    class CursorKeyData : public QSharedData
+    {
+    public:
+        CursorKeyData(CXCursorKind k, char *fn, unsigned l, unsigned c, unsigned o)
+            : kind(k), fileName(fn), line(l), col(c), off(o), hash(0)
+        {}
+        ~CursorKeyData()
+        {
+            if (fileName)
+                free(fileName);
+        }
 
-    CXCursorKind kind;
-    CXFile file;
-    CXString fileName;
-    unsigned line, col, off;
+        CXCursorKind kind;
+        char *fileName;
+        unsigned line, col, off;
+        mutable uint hash;
+    };
+    
+    QSharedDataPointer<CursorKeyData> d;
+    friend uint qHash(const CursorKey&);
 };
 
 static inline uint qHash(const CursorKey &key)
 {
+    if (key.isNull())
+        return 0;
+    uint &h = key.d->hash;
+    if (!h) {
 #define HASHCHAR(ch)                            \
-    h = (h << 4) + ch;                          \
-    h ^= (h & 0xf0000000) >> 23;                \
-    h &= 0x0fffffff;                            \
-    ++h;
+        h = (h << 4) + ch;                      \
+        h ^= (h & 0xf0000000) >> 23;            \
+        h &= 0x0fffffff;                        \
+        ++h;
 
-    uint h = 0;
-    if (!key.isNull()) {    
-        const char *ch = clang_getCString(key.fileName);
+        const char *ch = key.d->fileName;
         Q_ASSERT(ch);
         while (*ch) {
             HASHCHAR(*ch);
             ++ch;
         }
-        const quint16 uints[] = { key.kind, key.line, key.col };
+        const quint16 uints[] = { key.d->kind, key.d->line, key.d->col };
         for (int i=0; i<3; ++i) {
             ch = reinterpret_cast<const char*>(&uints[i]);
             for (int j=0; j<2; ++j) {
@@ -90,11 +130,10 @@ static inline uint qHash(const CursorKey &key)
     return h;
 }
 
-
 class RBuild : public QObject
 {
     Q_OBJECT
-public:
+    public:
     RBuild(QObject *parent = 0);
 
     void init(const Path& makefile);
