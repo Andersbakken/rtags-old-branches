@@ -29,10 +29,10 @@ public:
             clang_getInstantiationLocation(loc, &file, &line, &col, &off);
             if (file) {
                 const CXString fn = clang_getFileName(file);
-                char *fileName = realpath(clang_getCString(fn), 0);
+                const char *fileName = clang_getCString(fn);
                 if (fileName)
-                    d = new CursorKeyData(kind, fileName, line, col, off);
-                clang_disposeString(fn);
+                    d = new CursorKeyData(kind, fileName, line, col, off, fn);
+                // clang_disposeString(fn);
             }
         }
     }
@@ -80,19 +80,19 @@ private:
     class CursorKeyData : public QSharedData
     {
     public:
-        CursorKeyData(CXCursorKind k, char *fn, unsigned l, unsigned c, unsigned o)
-            : kind(k), fileName(fn), line(l), col(c), off(o), hash(0)
+        CursorKeyData(CXCursorKind k, const char *fn, unsigned l, unsigned c, unsigned o, const CXString &string)
+            : kind(k), fileName(fn), line(l), col(c), off(o), hash(0), str(string)
         {}
         ~CursorKeyData()
         {
-            if (fileName)
-                free(fileName);
+            clang_disposeString(str);
         }
 
         CXCursorKind kind;
-        char *fileName;
+        const char *fileName;
         unsigned line, col, off;
         mutable uint hash;
+        CXString str;
     };
     
     QSharedDataPointer<CursorKeyData> d;
