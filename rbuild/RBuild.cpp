@@ -5,88 +5,6 @@
 #include <stdio.h>
 #include <stdint.h>
 
-class CursorKey
-{
-public:
-    CursorKey()
-        : kind(CXCursor_FirstInvalid), file(0)
-    {}
-    CursorKey(const CXCursor &cursor)
-        : kind(clang_getCursorKind(cursor)), file(0)
-    {
-        if (!clang_isInvalid(kind)) {
-            CXSourceLocation loc = clang_getCursorLocation(cursor);
-            clang_getInstantiationLocation(loc, &file, &line, &col, &off);
-            if (file)
-                fileName = clang_getFileName(file);
-        }
-    }
-
-    ~CursorKey()
-    {
-        if (file)
-            clang_disposeString(fileName);
-    }
-
-    bool isNull() const
-    {
-        return !file;
-    }
-    bool operator<(const CursorKey &other) const
-    {
-        if (isNull())
-            return true;
-        if (other.isNull())
-            return false;
-        const int ret = strcmp(clang_getCString(fileName), clang_getCString(other.fileName));
-        if (ret < 0)
-            return true;
-        if (ret > 0)
-            return false;
-        return kind < other.kind;
-    }
-
-    bool operator==(const CursorKey &other) const
-    {
-        if (isNull())
-            return other.isNull();
-        return kind == other.kind && !strcmp(clang_getCString(fileName), clang_getCString(other.fileName));
-    }
-
-    CXCursorKind kind;
-    CXFile file;
-    CXString fileName;
-    unsigned line, col, off;
-};
-
-static inline uint qHash(const CursorKey &key)
-{
-    uint h = 0;
-    if (!key.isNull()) {
-#define HASHCHAR(ch)                            \
-        h = (h << 4) + ch;                      \
-        h ^= (h & 0xf0000000) >> 23;            \
-        h &= 0x0fffffff;                        \
-        ++h;
-
-        const char *ch = clang_getCString(key.fileName);
-        Q_ASSERT(ch);
-        while (*ch) {
-            HASHCHAR(*ch);
-            ++ch;
-        }
-        const uint16_t uints[] = { key.kind, key.line, key.col };
-        for (int i=0; i<3; ++i) {
-            ch = reinterpret_cast<const char*>(&uints[i]);
-            for (int j=0; j<2; ++j) {
-                HASHCHAR(*ch);
-                ++ch;
-            }
-        }
-    }
-    return h;
-}
-
 RBuild::Entry::Entry()
 {
 }
@@ -155,56 +73,21 @@ void RBuild::makefileFileReady(const MakefileItem& file)
     compile(file.arguments);
 }
 
-static inline QByteArray cursorKey(const CXCursor& cursor)
-{
-    CXSourceLocation loc = clang_getCursorLocation(cursor);
-    CXString usr = clang_getCursorUSR(cursor);
-    CXFile file;
-    unsigned int line, col, off;
-    clang_getInstantiationLocation(loc, &file, &line, &col, &off);
-    CXString filename = clang_getFileName(file);
-
-    /*CXCursorKind kind = clang_getCursorKind(cursor);
-    QByteArray data(clang_getCString(filename));
-    data += QByteArray::number(line) + "-" + QByteArray::number(col) + "-" + QByteArray::number(off) + "-" + QByteArray::number(kind);
-    clang_disposeString(filename);
-    return data;*/
-
-    QByteArray key;
-    const char* str = clang_getCString(usr);
-    if (str && (strcmp(str, "") != 0))
-        key += QByteArray(str) + "-";
-    else {
-        CXString spelling = clang_getCursorDisplayName(cursor);
-        str = clang_getCString(spelling);
-        if (str && (strcmp(str, "") != 0))
-            key += QByteArray(str) + "-";
-        clang_disposeString(spelling);
-    }
-    key += QByteArray(clang_getCString(filename)) + "-";
-    key += QByteArray::number(line) + ":" + QByteArray::number(col) + ":" + QByteArray::number(off);
-
-    clang_disposeString(filename);
-    clang_disposeString(usr);
-
-    return key;
-}
-
 static inline bool equalCursor(const CXCursor& c1, const CXCursor& c2)
 {
-    return (cursorKey(c1) == cursorKey(c2));
+    return (CursorKey(c1) == CursorKey(c2));
 }
 
 struct CollectData
 {
     CXCursor unitCursor;
-    QSet<QByteArray> seen;
+    QSet<CursorKey> seen;
     QList<CXCursor> cursors;
 };
 
 static inline void addCursor_helper(const CXCursor& cursor, CollectData* data)
 {
-    const QByteArray key = cursorKey(cursor);
+    const CursorKey key(cursor);
     if (!data->seen.contains(key)) {
         data->cursors.append(cursor);
         data->seen.insert(key);
@@ -249,7 +132,7 @@ static inline void debugCursor(FILE* out, const CXCursor& cursor)
 }
 
 #ifdef QT_DEBUG
-static inline void verifyTree(const QList<RBuild::Entry*> toplevels, const QHash<QByteArray, RBuild::Entry*>& seen)
+static inline void verifyTree(const QList<RBuild::Entry*> toplevels, const QHash<CursorKey, RBuild::Entry*>& seen)
 {
     printf("verify!\n");
     const RBuild::Entry* top;
@@ -300,15 +183,15 @@ static inline void replaceEntry(RBuild::Entry* entry, const CXCursor& cursor)
     entry->cxKind = clang_getCursorKind(cursor);
 }
 
-static inline RBuild::Entry *findContainer(CXCursor cursor, QHash<QByteArray, RBuild::Entry*> &seen, QList<RBuild::Entry*> &entries);
+static inline RBuild::Entry *findContainer(CXCursor cursor, QHash<CursorKey, RBuild::Entry*> &seen, QList<RBuild::Entry*> &entries);
 
-static inline RBuild::Entry* createEntry(const CXCursor& cursor, QHash<QByteArray, RBuild::Entry*> &seen, QList<RBuild::Entry*> &entries)
+static inline RBuild::Entry* createEntry(const CXCursor& cursor, QHash<CursorKey, RBuild::Entry*> &seen, QList<RBuild::Entry*> &entries)
 {
     CXSourceLocation loc;
     CXFile file;
     unsigned int line, col, off;
 
-    QByteArray key = cursorKey(cursor);
+    const CursorKey key(cursor);
     if (seen.contains(key))
         return 0;
 
@@ -331,9 +214,9 @@ static inline RBuild::Entry* createEntry(const CXCursor& cursor, QHash<QByteArra
         RBuild::Entry* parentEntry = 0;
         CXCursor definition = clang_isCursorDefinition(cursor) ? clang_getNullCursor() : clang_getCursorDefinition(canonical);
         if (isValidCursor(definition) && !equalCursor(canonical, definition)) {
-            QByteArray definitionKey = cursorKey(definition);
+            const CursorKey definitionKey(definition);
             if (!seen.contains(definitionKey)) {
-                QByteArray canonicalKey = cursorKey(canonical);
+                const CursorKey canonicalKey(canonical);
                 if (seen.contains(canonicalKey)) {
                     parentEntry = seen.value(canonicalKey);
                     replaceEntry(parentEntry, definition);
@@ -351,7 +234,7 @@ static inline RBuild::Entry* createEntry(const CXCursor& cursor, QHash<QByteArra
             } else
                 parentEntry = seen.value(definitionKey);
         } else if (!equalCursor(cursor, canonical)) {
-            QByteArray canonicalKey = cursorKey(canonical);
+            const CursorKey canonicalKey(canonical);
             if (!seen.contains(canonicalKey)) {
                 parentEntry = new RBuild::Entry;
                 replaceEntry(parentEntry, canonical);
@@ -386,7 +269,7 @@ static inline RBuild::Entry* createEntry(const CXCursor& cursor, QHash<QByteArra
     return 0;
 }
 
-static inline RBuild::Entry *findContainer(CXCursor cursor, QHash<QByteArray, RBuild::Entry*> &seen, QList<RBuild::Entry*> &entries)
+static inline RBuild::Entry *findContainer(CXCursor cursor, QHash<CursorKey, RBuild::Entry*> &seen, QList<RBuild::Entry*> &entries)
 {
     CXCursor parent = cursor;
     do {
@@ -397,7 +280,7 @@ static inline RBuild::Entry *findContainer(CXCursor cursor, QHash<QByteArray, RB
         case CXCursor_Namespace: {
             if (eatString(clang_getCursorDisplayName(parent)).isEmpty())
                 break;
-            const QByteArray containerKey = cursorKey(parent);
+            const CursorKey containerKey(parent);
             if (!seen.contains(containerKey)) {
                 RBuild::Entry* entry = createEntry(parent, seen, entries);
                 Q_ASSERT(entry && seen.value(containerKey) == entry);
@@ -412,7 +295,8 @@ static inline RBuild::Entry *findContainer(CXCursor cursor, QHash<QByteArray, RB
     return 0;
 }
 
-static inline void resolveData(const CollectData& data, QList<RBuild::Entry*>& entries, QHash<QByteArray, RBuild::Entry*>& seen)
+static inline void resolveData(const CollectData& data,
+                               QList<RBuild::Entry*>& entries, QHash<CursorKey, RBuild::Entry*>& seen)
 {
     foreach(const CXCursor& cursor, data.cursors) {
         (void)createEntry(cursor, seen, entries);
