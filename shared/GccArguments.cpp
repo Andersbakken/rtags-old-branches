@@ -180,6 +180,7 @@ bool GccArguments::parse(const QByteArray& cmd, const Path &p)
             }
         } else if (!a.isEmpty()) { // input file?
             data->input.append(argpos);
+            qDebug() << a << path << "balle";
             data->args.append(Data::Argument(argpos, Path::resolved(a, path)));
         }
     }
@@ -249,7 +250,11 @@ QList<Path> GccArguments::input() const
 
     QList<Path> ret;
     foreach (int pos, data->input) {
-        ret << data->args.at(pos).arg;
+        Path p = data->args.at(pos).arg;
+        qDebug() << p << p.isResolved();
+        if (!p.isResolved())
+            p.resolve();
+        ret << p;
     }
     return ret;
 }
