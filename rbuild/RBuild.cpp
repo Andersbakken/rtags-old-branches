@@ -40,6 +40,31 @@ private:
     const QList<QByteArray> args;
 };
 
+static inline const Source* findSource(const QByteArray& filename, const QList<Source>& sources)
+{
+    foreach(const Source& source, sources) {
+        if (source.path == filename)
+            return &source;
+    }
+    return 0;
+}
+
+static inline bool isSourceDirty(const Source* source, QSet<Path>* dirty = 0)
+{
+    bool dirtySource = (source->path.lastModified() != source->lastModified);
+    for (QHash<Path, quint64>::const_iterator it = source->dependencies.constBegin();
+         it != source->dependencies.constEnd(); ++it) {
+        if (dirty && dirty->contains(it.key())) {
+            dirtySource = true;
+        } else if (it.key().lastModified() != it.value()) {
+            if (dirty)
+                dirty->insert(it.key());
+            dirtySource = true;
+        }
+    }
+    return dirtySource;
+}
+
 RBuild::RBuild(unsigned flags, QObject *parent)
     : QObject(parent), mData(new RBuildPrivate)
 {
@@ -146,17 +171,7 @@ bool RBuild::updateDB()
     const int sourceCount = sources.size();
     for (int i=0; i<sourceCount; ++i) {
         const Source &source = sources.at(i);
-        bool dirtySource = (source.path.lastModified() != source.lastModified);
-        for (QHash<Path, quint64>::const_iterator it = source.dependencies.constBegin();
-             it != source.dependencies.constEnd(); ++it) {
-            if (dirty.contains(it.key())) {
-                dirtySource = true;
-            } else if (it.key().lastModified() != it.value()) {
-                dirty.insert(it.key());
-                dirtySource = true;
-            }
-        }
-        if (dirtySource) {
+        if (isSourceDirty(&source, &dirty)) {
             dirty.insert(source.path);
             reparse.append(&sources[i]);
         } else {
@@ -734,6 +749,7 @@ bool RBuild::pch(const GccArguments &pch)
     if (mData->flags & DisablePCH)
         return false;
     const qint64 before = timer.elapsed();
+#warning Make output absolute?
     QByteArray output = pch.output();
     int idx = output.indexOf(".gch");
     if (idx != -1) {
@@ -745,7 +761,16 @@ bool RBuild::pch(const GccArguments &pch)
         QMutexLocker lock(&mData->mutex);
         if (mData->pch.contains(output))
             return true;
-        mData->pch[output] = QByteArray();
+        const QByteArray existingPch = mData->db->read<QByteArray>(Database::General, "pch-" + output);
+        if (!existingPch.isEmpty()) {
+            mData->pch[output] = existingPch;
+            const Source* pchSource = findSource(existingPch, mData->sources);
+            Q_ASSERT(pchSource);
+            if (!isSourceDirty(pchSource))
+                return true;
+        } else {
+            mData->pch[output] = QByteArray();
+        }
     }
 
     QList<QByteArray> args = pch.clangArgs();
@@ -765,8 +790,10 @@ bool RBuild::pch(const GccArguments &pch)
         mData->pch[output] = tmp;
         const qint64 elapsed = timer.elapsed() - before;
         printf("pch %s %s (%lld ms)\n", pch.input().constData(), output.constData(), elapsed);
+        mData->db->write(Database::General, "pch-" + output, QByteArray(tmp));
     } else {
         mData->pch.remove(output);
+        mData->db->remove(Database::General, "pch-" + output);
     }
     return ok;
 }
