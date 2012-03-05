@@ -160,7 +160,7 @@ public:
 protected:
     virtual bool openDatabase(const Path &db, Mode mode) = 0;
     virtual void closeDatabase() = 0;
-    virtual Connection *createConnection(ConnectionType type) = 0;
+    virtual Connection *createConnection(ConnectionType type) const = 0;
 private:
     static inline QByteArray encodeKey(const QByteArray &key)
     {
@@ -186,6 +186,9 @@ private:
         const QByteArray key = encodeKey(k);
         if (key.isEmpty())
             return T();
+        if (!mConnections[type])
+            mConnections[type] = createConnection(type);
+        Q_ASSERT(mConnections[type]);
         const QByteArray dat = mConnections[type]->readData(key);
         if (dat.isEmpty())
             return defaultValue;
@@ -196,6 +199,9 @@ private:
     {
         const QByteArray key = encodeKey(k);
         Q_ASSERT(!key.isEmpty());
+        if (!mConnections[type])
+            mConnections[type] = createConnection(type);
+        Q_ASSERT(mConnections[type]);
         mConnections[type]->writeData(key, encodeValue<T>(t));
     }
 
@@ -203,6 +209,9 @@ private:
     {
         const QByteArray key = encodeKey(k);
         Q_ASSERT(!key.isEmpty());
+        if (!mConnections[type])
+            mConnections[type] = createConnection(type);
+        Q_ASSERT(mConnections[type]);
         mConnections[type]->writeData(key, QByteArray());
     }
 
@@ -211,7 +220,7 @@ private:
 
     Path mPath;
     Mode mMode;
-    Connection *mConnections[NumConnectionTypes];
+    mutable Connection *mConnections[NumConnectionTypes];
     QHash<Path, unsigned> mFilesByName; // ### this is duplicated in RBuildPrivate::filesByName
     QHash<unsigned, Path> mFilesByIndex;
 

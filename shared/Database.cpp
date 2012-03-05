@@ -5,7 +5,9 @@
 
 Database::Database()
     : mMode(ReadOnly), mRefIdxCounter(0)
-{}
+{
+    memset(mConnections, 0, sizeof(mConnections));
+}
 
 Database::~Database()
 {
@@ -72,10 +74,6 @@ bool Database::open(const Path &db, Mode mode)
         mMode = mode;
         mPath = db;
         mPath.resolve();
-        for (int i=0; i<NumConnectionTypes; ++i) {
-            mConnections[i] = createConnection(static_cast<ConnectionType>(i));
-            Q_ASSERT(mConnections[i]);
-        }
         switch (mode) {
         case ReadOnly:
         case ReadWrite: {

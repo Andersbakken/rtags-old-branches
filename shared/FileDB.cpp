@@ -400,7 +400,7 @@ void FileDB::closeDatabase()
     mPath.clear();
 }
 
-Connection* FileDB::createConnection(ConnectionType type)
+Connection* FileDB::createConnection(ConnectionType type) const
 {
     if (!isOpened())
         return 0;

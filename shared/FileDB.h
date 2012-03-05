@@ -16,7 +16,7 @@ public:
 protected:
     virtual bool openDatabase(const Path &db, Mode mode);
     virtual void closeDatabase();
-    virtual Connection *createConnection(ConnectionType type);
+    virtual Connection *createConnection(ConnectionType type) const;
 
 private:
     Path mPath;

@@ -104,7 +104,7 @@ public:
         return new LevelDBIterator(type, mDatabases[type]);
     }
 
-    virtual Connection *createConnection(ConnectionType type)
+    virtual Connection *createConnection(ConnectionType type) const
     {
         return new LevelDBConnection(mDatabases[type]);
     }
