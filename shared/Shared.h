@@ -6,6 +6,22 @@
 #include <Path.h>
 #include <Log.h>
 
+static inline int digits(int len)
+{
+    int ret = 1;
+    while (len >= 10) {
+        len /= 10;
+        ++ret;
+    }
+    return ret;
+}
+static inline QByteArray makeLocation(const Path &path, int line, int col)
+{
+    QByteArray ret(path.size() + 2 + digits(line) + digits(col), 0);
+    snprintf(ret.data(), ret.size(), "%s:%d:%d", path.constData(), line, col);
+    return ret;
+}
+
 static inline QByteArray eatString(CXString str)
 {
     const QByteArray ret(clang_getCString(str));
