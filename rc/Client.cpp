@@ -31,7 +31,7 @@ void Client::query(QueryMessage::Type type, const QByteArray& msg, const QHash<P
     if (m_conn->connectToHost("localhost", Connection::Port)) {
         QueryMessage message(msg, type, unsavedFiles);
         connect(m_conn, SIGNAL(newMessage(Message*)), this, SLOT(onNewMessage(Message*)));
-        m_conn->send(&message);
+        m_conn->send(&message, m_flags);
         qApp->exec();
     } else {
         warning("Can't connect to host");
@@ -129,7 +129,7 @@ void Client::onMakefileReady(const GccArguments& args)
             log(1) << "sending" << "input:" << input << "output:" << output
                    << "args:" << args.clangArgs() << "incs:" << mapPchToInput(args.explicitIncludes());
         }
-        m_conn->send(&message);
+        m_conn->send(&message, m_flags);
 
         m_pchs[output] = input;
 
@@ -145,5 +145,5 @@ void Client::onMakefileReady(const GccArguments& args)
         log(1) << "sending" << "input:" << input << "output:" << output
                << "args:" << args.clangArgs() << "incs:" << mapPchToInput(args.explicitIncludes());
     }
-    m_conn->send(&message);
+    m_conn->send(&message, m_flags);
 }

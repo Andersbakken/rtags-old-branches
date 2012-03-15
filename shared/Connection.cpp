@@ -36,7 +36,8 @@ void ConnectionPrivate::dataAvailable()
 
         int id;
         QByteArray payload;
-        strm >> id >> payload;
+        unsigned flags;
+        strm >> id >> payload >> flags;
         Q_ASSERT(id > 0 && Connection::s_metas.contains(id));
 
         Connection::Meta m = Connection::s_metas.value(id);
@@ -87,7 +88,7 @@ bool Connection::connectToHost(const QString& host, quint16 port)
     return m_priv->socket->waitForConnected(1000);
 }
 
-void Connection::send(int id, const QByteArray& message)
+void Connection::send(int id, const QByteArray& message, unsigned flags)
 {
     if (m_priv->socket->state() != QAbstractSocket::ConnectedState
         && m_priv->socket->state() != QAbstractSocket::ConnectingState
@@ -97,7 +98,7 @@ void Connection::send(int id, const QByteArray& message)
     QByteArray data;
     {
         QDataStream strm(&data, QIODevice::WriteOnly);
-        strm << (int)0 << id << message;
+        strm << 0 << id << message << flags;
         strm.device()->seek(0);
         strm << static_cast<quint32>(data.size()) - static_cast<quint32>(sizeof(quint32));
     }

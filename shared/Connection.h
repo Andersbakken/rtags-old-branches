@@ -26,7 +26,7 @@ public:
     int pendingWrite() const;
 
     template<typename T>
-    void send(const T* message);
+    void send(const T* message, unsigned flags);
 
     template<typename T>
     static bool registerMessage();
@@ -39,7 +39,7 @@ signals:
     void sendComplete();
 
 private:
-    void send(int id, const QByteArray& message);
+    void send(int id, const QByteArray& message, unsigned flags);
 
 private:
     ConnectionPrivate* m_priv;
@@ -55,9 +55,9 @@ private:
 };
 
 template<typename T>
-void Connection::send(const T* message)
+void Connection::send(const T* message, unsigned flags)
 {
-    send(T::MessageId, message->toByteArray());
+    send(T::MessageId, message->toByteArray(), flags);
 }
 
 template<typename T>
