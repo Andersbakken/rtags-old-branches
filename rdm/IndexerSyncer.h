@@ -4,11 +4,12 @@
 #include "Indexer.h"
 #include <QtCore>
 
+class Indexer;
 class IndexerSyncer : public QThread
 {
     Q_OBJECT
 public:
-    IndexerSyncer(QObject* parent = 0);
+    IndexerSyncer(Indexer *indexer, QObject* parent = 0);
 
     void addSymbols(const SymbolHash &data);
     void addSymbolNames(const SymbolNameHash &symbolNames);
@@ -28,6 +29,7 @@ signals:
 private:
     void maybeWake();
 
+    Indexer *mIndexer;
     bool mStopped;
     QMutex mMutex;
     QWaitCondition mCond;

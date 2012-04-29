@@ -56,6 +56,14 @@ public:
     inline IndexerSyncer *syncer() const { return mSyncer; }
     Path path() const { return mPath; }
     void abort();
+    void write(SymbolNameHash &symbolNames, // we don't want these to detach
+               SymbolHash &symbols,
+               DependencyHash &dependencies,
+               DependencyHash &pchDependencies,
+               InformationHash &informations,
+               ReferenceHash &references,
+               QHash<Path, PchUSRHash> &pchUSRHashes,
+               bool *wroteSymbolNames);
 protected:
     void customEvent(QEvent* event);
 signals:
