@@ -1,7 +1,6 @@
 #include "IndexerJob.h"
 #include "SHA256.h"
 #include "DependencyEvent.h"
-#include "IndexerSyncer.h"
 #include "Server.h"
 
 static inline QList<Path> extractPchFiles(const QList<QByteArray>& args)
@@ -322,7 +321,6 @@ void IndexerJob::execute()
     QList<QByteArray> args = mArgs + mIndexer->defaultArgs();
     if (!mPchHeaders.isEmpty())
         mPchUSRHash = mIndexer->pchUSRHash(mPchHeaders);
-    const quint64 waitingForPch = timer.restart();
 
     QVarLengthArray<const char*, 32> clangArgs(args.size());
     QByteArray clangLine = "clang ";
@@ -378,8 +376,8 @@ void IndexerJob::execute()
     if (!mUnit) {
         error() << "got 0 unit for" << clangLine;
         mDependencies[mIn].insert(mIn);
-        QCoreApplication::postEvent(mIndexer, new DependencyEvent(mDependencies));
-        mIndexer->syncer()->addFileInformation(mIn, mArgs, timeStamp);
+        mIndexer->addDependencies(mDependencies);
+        mIndexer->addFileInformation(mIn, mArgs, timeStamp, QSet<Path>());
         clang_disposeIndex(mIndex);
         mIndex = 0;
     } else {
@@ -400,32 +398,22 @@ void IndexerJob::execute()
                 mIndexer->setPchUSRHash(mIn, mPchUSRHash);
             }
         }
-
         foreach (const Path &path, mPaths) {
             const Location loc(path, 0);
             mSymbolNames[path].insert(loc);
             mSymbolNames[path.fileName()].insert(loc);
-            mIndexer->syncer()->addFileInformations(mPaths);
         }
-        if (!isAborted()) {
-            mIndexer->syncer()->addSymbols(mSymbols);
-            mIndexer->syncer()->addSymbolNames(mSymbolNames);
-            mIndexer->syncer()->addFileInformation(mIn, mArgs, timeStamp);
-            mIndexer->syncer()->addReferences(mReferences);
-            if (mIsPch)
-                mIndexer->setPchDependencies(mIn, mPchDependencies);
-        }
+        
+        mIndexer->addSymbols(mSymbols, mReferences);
+        mIndexer->addSymbolNames(mSymbolNames);
+        mIndexer->addFileInformation(mIn, mArgs, timeStamp, mPaths);
         clang_disposeTranslationUnit(mUnit);
         mUnit = 0;
         clang_disposeIndex(mIndex);
         mIndex = 0;
-
     }
     char buf[1024];
-    const int w = snprintf(buf, sizeof(buf) - 1, "Visited %s in %lldms.%s",
-                           mIn.constData(), timer.elapsed(),
-                           qPrintable(waitingForPch ? QString(" Waited for pch: %1ms.").arg(waitingForPch)
-                                      : QString()));
-
+    const int w = snprintf(buf, sizeof(buf) - 1, "Visited %s in %lldms.",
+                           mIn.constData(), timer.elapsed());
     emit done(mId, mIn, mIsPch, QByteArray(buf, w));
 }

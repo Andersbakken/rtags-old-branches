@@ -1,4 +1,3 @@
-#include "IndexerSyncer.h"
 #include "leveldb/db.h"
 #include "Server.h"
 

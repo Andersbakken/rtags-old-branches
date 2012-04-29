@@ -41,6 +41,7 @@ public:
     static void setBaseDirectory(const QByteArray& base, bool clear);
     static Path databaseDir(DatabaseType type);
     static Path pchDir();
+    void timerEvent(QTimerEvent *e);
 signals:
     void complete(int id, const QList<QByteArray>& locations);
 private slots:
@@ -78,6 +79,7 @@ private:
     QList<QByteArray> mCachedSymbolNames;
     static Path sBase;
     leveldb::DB *mDBs[DatabaseTypeCount];
+    QBasicTimer mSymbolNamesChangedTimer;
 };
 
 #endif

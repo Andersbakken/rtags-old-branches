@@ -41,9 +41,7 @@ class Indexer : public QObject
 {
     Q_OBJECT;
 public:
-
     Indexer(const QByteArray& path, QObject* parent = 0);
-    ~Indexer();
 
     int index(const QByteArray& input, const QList<QByteArray>& arguments);
 
@@ -53,20 +51,15 @@ public:
     QSet<Path> pchDependencies(const Path &pchHeader) const;
     QHash<QByteArray, Location> pchUSRHash(const QList<Path> &pchFiles) const;
     void setPchUSRHash(const Path &pch, const PchUSRHash &astHash);
-    inline IndexerSyncer *syncer() const { return mSyncer; }
     Path path() const { return mPath; }
     void abort();
-    void write(SymbolNameHash &symbolNames, // we don't want these to detach
-               SymbolHash &symbols,
-               DependencyHash &dependencies,
-               DependencyHash &pchDependencies,
-               InformationHash &informations,
-               ReferenceHash &references,
-               QHash<Path, PchUSRHash> &pchUSRHashes,
-               bool *wroteSymbolNames);
-protected:
-    void customEvent(QEvent* event);
+    bool addSymbols(SymbolHash &symbols, ReferenceHash &references);
+    bool addSymbolNames(SymbolNameHash &symbolNames);
+    void addDependencies(const DependencyHash &deps);
+    void addFileInformation(const Path &path, const QList<QByteArray> &args, time_t timeStamp,
+                            const QSet<Path> &paths);
 signals:
+    void symbolNamesChanged();
     void indexingDone(int id);
     void jobsComplete();
 private slots:
@@ -82,6 +75,8 @@ private:
     mutable QReadWriteLock mPchUSRHashLock;
     QHash<Path, PchUSRHash > mPchUSRHashes;
 
+    QMutex mSymbolNamesMutex, mSymbolsMutex, mDependenciesMutex, mFileInformationsMutex, mPchMutex;
+
     QList<QByteArray> mDefaultArgs;
     mutable QReadWriteLock mPchDependenciesLock;
     QHash<Path, QSet<Path> > mPchDependencies;
@@ -92,8 +87,6 @@ private:
 
     QByteArray mPath;
     QHash<int, IndexerJob*> mJobs, mWaitingForPCH;
-
-    IndexerSyncer* mSyncer;
 
     bool mTimerRunning;
     QElapsedTimer mTimer;
