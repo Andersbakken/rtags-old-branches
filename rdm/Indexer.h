@@ -13,23 +13,35 @@ typedef QHash<Path, QSet<Path> > DependencyHash;
 typedef QPair<QByteArray, quint64> WatchedPair;
 typedef QHash<QByteArray, Location> PchUSRHash;
 typedef QHash<Path, QSet<WatchedPair> > WatchedHash;
+
 struct FileInformation {
-    FileInformation() : lastTouched(0) {}
-    time_t lastTouched;
+    FileInformation() : parseTime(0) {}
+    quint64 parseTime;
     QList<QByteArray> compileArgs;
 };
 static inline QDataStream &operator<<(QDataStream &ds, const FileInformation &ci)
 {
-    ds << static_cast<quint64>(ci.lastTouched) << ci.compileArgs;
+    ds << ci.parseTime << ci.compileArgs;
     return ds;
 }
 
 static inline QDataStream &operator>>(QDataStream &ds, FileInformation &ci)
 {
-    quint64 lastTouched;
-    ds >> lastTouched;
-    ci.lastTouched = static_cast<time_t>(lastTouched);
-    ds >> ci.compileArgs;
+    ds >> ci.parseTime >> ci.compileArgs;
+    return ds;
+}
+
+static inline QDataStream &operator<<(QDataStream &ds, Rdm::ReferenceType type)
+{
+    ds << static_cast<quint8>(type);
+    return ds;
+}
+
+static inline QDataStream &operator>>(QDataStream &ds, Rdm::ReferenceType &type)
+{
+    quint8 t;
+    ds >> t;
+    type = static_cast<Rdm::ReferenceType>(t);
     return ds;
 }
 
@@ -55,13 +67,21 @@ public:
     QSet<Path> pchDependencies(const Path &pchHeader) const;
     QHash<QByteArray, Location> pchUSRHash(const QList<Path> &pchFiles) const;
     void setPchUSRHash(const Path &pch, const PchUSRHash &astHash);
-    inline IndexerSyncer *syncer() const { return mSyncer; }
-    inline SymbolNameSyncer *symbolNameSyncer() const { return mSymbolNameSyncer;}
-    inline SymbolSyncer *symbolSyncer() const { return mSymbolSyncer;}
     Path path() const { return mPath; }
     void abort();
+
+    void deferData(const QByteArray &data)
+    {
+        QMutexLocker lock(&mMutex);
+        if (!mTempFile) {
+            mTempFile = new QTemporaryFile;
+            mTempFile->open();
+        }
+        // qDebug() << "wrote" << data.size() << "to" << mTempFile->fileName();
+        mTempFile->write(data);
+    }
 protected:
-    void customEvent(QEvent* event);
+    void timerEvent(QTimerEvent *e);
 signals:
     void indexingDone(int id);
     void jobsComplete();
@@ -69,11 +89,14 @@ private slots:
     void onJobComplete(int id, const Path& input, bool isPch, const QByteArray &msg);
     void onDirectoryChanged(const QString& path);
 private:
+    void processDeferredData(); // QMutex held
     void commitDependencies(const DependencyHash& deps, bool sync);
     void initWatcher();
     void init();
     bool needsToWaitForPch(IndexerJob *job) const;
     void startJob(int id, IndexerJob *job);
+
+    QTemporaryFile *mTempFile;
 
     mutable QReadWriteLock mPchUSRHashLock;
     QHash<Path, PchUSRHash > mPchUSRHashes;
@@ -89,12 +112,9 @@ private:
     QByteArray mPath;
     QHash<int, IndexerJob*> mJobs, mWaitingForPCH;
 
-    IndexerSyncer *mSyncer;
-    SymbolSyncer *mSymbolSyncer;
-    SymbolNameSyncer *mSymbolNameSyncer;
-
     bool mTimerRunning;
     QElapsedTimer mTimer;
+    QBasicTimer mJobsDoneTimer;
 
     QFileSystemWatcher mWatcher;
     DependencyHash mDependencies;

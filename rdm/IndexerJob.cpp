@@ -1,9 +1,5 @@
 #include "IndexerJob.h"
 #include "SHA256.h"
-#include "DependencyEvent.h"
-#include "IndexerSyncer.h"
-#include "SymbolSyncer.h"
-#include "SymbolNameSyncer.h"
 #include "Server.h"
 
 static inline QList<Path> extractPchFiles(const QList<QByteArray>& args)
@@ -371,37 +367,51 @@ void IndexerJob::execute()
     mUnit = clang_parseTranslationUnit(mIndex, mIn.constData(),
                                        clangArgs.data(), idx, 0, 0,
                                        CXTranslationUnit_Incomplete | CXTranslationUnit_DetailedPreprocessingRecord);
-    const time_t timeStamp = time(0);
     warning() << "loading unit" << clangLine << (mUnit != 0);
     if (isAborted()) {
         return;
     }
+    QByteArray data;
+    QDataStream ds(&data, QIODevice::WriteOnly);
+    ds << mIn << mArgs << bool(mUnit);
 
     if (!mUnit) {
         error() << "got 0 unit for" << clangLine;
         mDependencies[mIn].insert(mIn);
-        QCoreApplication::postEvent(mIndexer, new DependencyEvent(mDependencies));
-        mIndexer->syncer()->addFileInformation(mIn, mArgs, timeStamp);
+        ds << mDependencies;
+        // QCoreApplication::postEvent(mIndexer, new DependencyEvent(mDependencies));
+        // mIndexer->deferStream() << Indexer::FileInformationData << mIn << quint64(0)
+        //                         << mArgs << QSet<Path>();
+        // // mIndexer->syncer()->addFileInformation(mIn, mArgs, timeStamp);
         clang_disposeIndex(mIndex);
         mIndex = 0;
     } else {
+        const quint64 timeStamp = time(0);
+        ds << timeStamp;
         clang_getInclusions(mUnit, inclusionVisitor, this);
         foreach(const Path &pchHeader, mPchHeaders) {
             foreach(const Path &dep, mIndexer->pchDependencies(pchHeader)) {
                 mDependencies[dep].insert(mIn);
             }
         }
-        QCoreApplication::postEvent(mIndexer, new DependencyEvent(mDependencies));
+        ds << mDependencies; // << mIsPch;
+        // QCoreApplication::postEvent(mIndexer, new DependencyEvent(mDependencies));
 
         clang_visitChildren(clang_getTranslationUnitCursor(mUnit), indexVisitor, this);
         if (mIsPch) {
+            // ds << mPchUSRHash << mPchDependencies;
             Q_ASSERT(!pchName.isEmpty());
             if (clang_saveTranslationUnit(mUnit, pchName.constData(), clang_defaultSaveOptions(mUnit)) != CXSaveError_None) {
                 error() << "Couldn't save pch file" << mIn << pchName;
             } else {
-                mIndexer->setPchUSRHash(mIn, mPchUSRHash);
+                mIndexer->setPchUSRHash(mIn, mPchUSRHash); // keep in memory as well
+                mIndexer->setPchDependencies(mIn, mPchDependencies);
             }
         }
+        clang_disposeTranslationUnit(mUnit);
+        mUnit = 0;
+        clang_disposeIndex(mIndex);
+        mIndex = 0;
 
         foreach (const Path &path, mPaths) {
             const Location loc(path, 0);
@@ -409,18 +419,9 @@ void IndexerJob::execute()
             mSymbolNames[path.fileName()].insert(loc);
         }
         if (!isAborted()) {
-            mIndexer->syncer()->addFileInformations(mPaths);
-            mIndexer->syncer()->addFileInformation(mIn, mArgs, timeStamp);
-            if (mIsPch)
-                mIndexer->setPchDependencies(mIn, mPchDependencies);
-            mIndexer->symbolSyncer()->addSymbols(mSymbols, mReferences);
-            mIndexer->symbolNameSyncer()->addSymbolNames(mSymbolNames);
+            ds << mSymbolNames << mSymbols << mReferences;
+            mIndexer->deferData(data);
         }
-        clang_disposeTranslationUnit(mUnit);
-        mUnit = 0;
-        clang_disposeIndex(mIndex);
-        mIndex = 0;
-
     }
     char buf[1024];
     const int w = snprintf(buf, sizeof(buf) - 1, "Visited %s in %lldms.",

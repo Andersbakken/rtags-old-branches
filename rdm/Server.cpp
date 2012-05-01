@@ -7,7 +7,6 @@
 #include "Message.h"
 #include "Messages.h"
 #include "Path.h"
-#include "SymbolNameSyncer.h"
 #include "TestJob.h"
 #include "QueryMessage.h"
 #include "Rdm.h"
@@ -79,7 +78,7 @@ bool Server::init(unsigned options, const QList<QByteArray> &defaultArguments)
     Messages::init();
     mServer = new QTcpServer(this);
     mIndexer = new Indexer(sBase, this);
-    connect(mIndexer->symbolNameSyncer(), SIGNAL(symbolNamesChanged()), this, SLOT(onSymbolNamesChanged()));
+    // connect(mIndexer->symbolNameSyncer(), SIGNAL(symbolNamesChanged()), this, SLOT(onSymbolNamesChanged()));
 
     if (!mServer->listen(QHostAddress::Any, Connection::Port)) {
         error("Unable to listen to port %d", Connection::Port);

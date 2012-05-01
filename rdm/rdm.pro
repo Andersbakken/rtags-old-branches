@@ -23,9 +23,6 @@ SOURCES += \
     Rdm.cpp \
     StatusJob.cpp \
     IndexerJob.cpp \
-    IndexerSyncer.cpp \
-    SymbolSyncer.cpp \
-    SymbolNameSyncer.cpp \
     DirtyJob.cpp \
     Job.cpp \
     TestJob.cpp
@@ -44,9 +41,6 @@ HEADERS += \
     IndexerJob.h \
     Source.h \
     DependencyEvent.h \
-    IndexerSyncer.h \
-    SymbolSyncer.h \
-    SymbolNameSyncer.h \
     DirtyJob.h \
     Job.h \
     TestJob.h \

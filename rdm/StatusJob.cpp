@@ -108,7 +108,7 @@ void StatusJob::execute()
             memcpy(buf + 2, it->key().data(), it->key().size());
             const FileInformation fi = Rdm::readValue<FileInformation>(it);
             snprintf(buf + 2 + it->key().size(), sizeof(buf) - 3 - it->key().size(),
-                     ": %s [%s]", QDateTime::fromTime_t(fi.lastTouched).toString().toLocal8Bit().constData(),
+                     ": %s [%s]", QDateTime::fromTime_t(fi.parseTime).toString().toLocal8Bit().constData(),
                      RTags::join(fi.compileArgs).constData());
             write(buf);
             it->Next();

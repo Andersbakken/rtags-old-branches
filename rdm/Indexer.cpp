@@ -3,9 +3,6 @@
 #include "DirtyJob.h"
 #include "Indexer.h"
 #include "IndexerJob.h"
-#include "IndexerSyncer.h"
-#include "SymbolNameSyncer.h"
-#include "SymbolSyncer.h"
 #include "Path.h"
 #include "RTags.h"
 #include "Rdm.h"
@@ -14,9 +11,13 @@
 #include <Log.h>
 #include <QtCore>
 
+enum { JobsDoneTimerTimeout = 500 };
 Indexer::Indexer(const QByteArray& path, QObject* parent)
-    : QObject(parent)
+    : QObject(parent), mTempFile(0)
 {
+    mTempFile = new QTemporaryFile;
+    mTempFile->open();
+
     qRegisterMetaType<Path>("Path");
 
     Q_ASSERT(path.startsWith('/'));
@@ -29,12 +30,6 @@ Indexer::Indexer(const QByteArray& path, QObject* parent)
     QDir dir;
     dir.mkpath(mPath);
     mTimerRunning = false;
-    mSyncer = new IndexerSyncer(this);
-    mSyncer->start();
-    mSymbolNameSyncer = new SymbolNameSyncer(this);
-    mSymbolNameSyncer->start();
-    mSymbolSyncer = new SymbolSyncer(this);
-    mSymbolSyncer->start();
 
     connect(&mWatcher, SIGNAL(directoryChanged(QString)),
             this, SLOT(onDirectoryChanged(QString)));
@@ -145,7 +140,7 @@ void Indexer::init()
         const Path path(key.data(), key.size());
         if (path.isFile()) {
             const FileInformation fi = Rdm::readValue<FileInformation>(it);
-            if (!fi.compileArgs.isEmpty() && isDirty(path, deps.value(path), fi.lastTouched, dirty)) {
+            if (!fi.compileArgs.isEmpty() && isDirty(path, deps.value(path), fi.parseTime, dirty)) {
                 // ### am I checking pch deps correctly here?
                 if (isPch(fi.compileArgs)) {
                     toIndexPch[path] = fi.compileArgs;
@@ -170,8 +165,6 @@ void Indexer::init()
 
 Indexer::~Indexer()
 {
-    mSyncer->stop();
-    mSyncer->wait();
 }
 
 void Indexer::commitDependencies(const DependencyHash& deps, bool sync)
@@ -191,8 +184,31 @@ void Indexer::commitDependencies(const DependencyHash& deps, bool sync)
             mDependencies[it.key()].unite(it.value());
         }
     }
-    if (sync && !newDependencies.isEmpty())
-        mSyncer->addDependencies(newDependencies);
+    if (sync && !newDependencies.isEmpty()) {
+        // QElapsedTimer timer;
+        // timer.start();
+        // leveldb::DB *db = Server::instance()->db(Server::Dependency);
+        // Rdm::Batch batch(db);
+
+        // DependencyHash::iterator it = dependencies.begin();
+        // const DependencyHash::const_iterator end = dependencies.end();
+        // while (it != end) {
+        //     const char* key = it.key().constData();
+        //     QSet<Path> added = it.value();
+        //     QSet<Path> current = Rdm::readValue<QSet<Path> >(db, key);
+        //     const int oldSize = current.size();
+        //     if (current.unite(added).size() > oldSize) {
+        //         batch.add(key, current);
+        //     }
+        //     ++it;
+        // }
+        // batch.write();
+        // if (batch.totalWritten) {
+        //     out += QByteArray("Wrote " + QByteArray::number(dependencies.size())
+        //                       + " dependencies, " + QByteArray::number(batch.totalWritten) + " bytes in "
+        //                       + QByteArray::number(timer.elapsed()) + "ms");
+        // }
+    }
 
     Path parentPath;
     QSet<QString> watchPaths;
@@ -245,13 +261,6 @@ void Indexer::startJob(int id, IndexerJob *job)
     }
 
     QThreadPool::globalInstance()->start(job);
-}
-
-void Indexer::customEvent(QEvent* e)
-{
-    if (e->type() == static_cast<QEvent::Type>(DependencyEvent::Type)) {
-        commitDependencies(static_cast<DependencyEvent*>(e)->deps, true);
-    }
 }
 
 void Indexer::onDirectoryChanged(const QString& path)
@@ -347,16 +356,8 @@ void Indexer::onJobComplete(int id, const Path& input, bool isPch, const QByteAr
           mJobs.size(), mWaitingForPCH.size());
 
     if (mJobs.isEmpty()) {
-        mSyncer->notify();
-        mSymbolSyncer->notify();
-        mSymbolNameSyncer->notify();
-
-        Q_ASSERT(mTimerRunning);
-        mTimerRunning = false;
-        error() << "jobs took" << ((double)(mTimer.elapsed()) / 1000.0) << "secs";
-        emit jobsComplete();
+        mJobsDoneTimer.start(500, this);
     }
-
     emit indexingDone(id);
     sender()->deleteLater();
 }
@@ -374,7 +375,8 @@ void Indexer::setPchDependencies(const Path &pchHeader, const QSet<Path> &deps)
     } else {
         mPchDependencies[pchHeader] = deps;
     }
-    mSyncer->setPchDependencies(mPchDependencies);
+    leveldb::DB *db = Server::instance()->db(Server::PCH);
+    Rdm::writeValue(db, "dependencies", mPchDependencies);
 }
 
 QSet<Path> Indexer::pchDependencies(const Path &pchHeader) const
@@ -405,9 +407,11 @@ PchUSRHash Indexer::pchUSRHash(const QList<Path> &pchFiles) const
 
 void Indexer::setPchUSRHash(const Path &pch, const PchUSRHash &astHash)
 {
-    mSyncer->addPchUSRHash(pch, astHash);
     QWriteLocker lock(&mPchUSRHashLock);
     mPchUSRHashes[pch] = astHash;
+    leveldb::DB *db = Server::instance()->db(Server::PCH);
+    Rdm::writeValue(db, pch.constData(), astHash);
+
 }
 bool Indexer::needsToWaitForPch(IndexerJob *job) const
 {
@@ -425,5 +429,181 @@ void Indexer::abort()
     mWaitingForPCH.clear();
     foreach(IndexerJob *job, mJobs) {
         job->abort();
+    }
+}
+
+void Indexer::processDeferredData()
+{
+    const leveldb::WriteOptions writeOptions;
+    mTempFile->seek(0);
+    QDataStream ds(mTempFile);
+    double total = ds.device()->size();
+    error() << "about to process" << ds.device()->size() << "bytes from" << mTempFile->fileName();
+    while (!ds.atEnd()) {
+        bool success;
+        {
+            leveldb::DB *db = Server::instance()->db(Server::FileInformation);
+            Path path;
+            FileInformation fi;
+            ds >> path >> fi.compileArgs >> success;
+            if (success)
+                ds >> fi.parseTime;
+            Rdm::writeValue<FileInformation>(db, path.constData(), fi);
+        }
+        {
+            leveldb::WriteBatch batch;
+            DependencyHash dependencies;
+            ds >> dependencies;
+            leveldb::DB *db = Server::instance()->db(Server::Dependency);
+            DependencyHash::iterator it = dependencies.begin();
+            const DependencyHash::const_iterator end = dependencies.end();
+            bool changed = false;
+            while (it != end) {
+                const char* key = it.key().constData();
+                QSet<Path> added = it.value();
+                QSet<Path> current = Rdm::readValue<QSet<Path> >(db, key);
+                const int oldSize = current.size();
+                if (current.unite(added).size() > oldSize) {
+                    Rdm::writeValue(&batch, key, current);
+                    changed = true;
+                }
+                ++it;
+            }
+            if (changed)
+                db->Write(writeOptions, &batch);
+        }
+        if (!success)
+            continue;
+        {
+            SymbolNameHash symbolNames;
+            ds >> symbolNames;
+            leveldb::DB *db = Server::instance()->db(Server::SymbolName);
+
+            leveldb::WriteBatch batch;
+
+            SymbolNameHash::iterator it = symbolNames.begin();
+            const SymbolNameHash::const_iterator end = symbolNames.end();
+            bool changed = false;
+            while (it != end) {
+                const char *key = it.key().constData();
+                const QSet<Location> added = it.value();
+                QSet<Location> current = Rdm::readValue<QSet<Location> >(db, key);
+                if (Rdm::addTo(current, added)) {
+                    Rdm::writeValue(&batch, key, current);
+                    changed = true;
+                }
+                ++it;
+            }
+            if (changed)
+                db->Write(writeOptions, &batch);
+        }
+        {
+            leveldb::DB *db = Server::instance()->db(Server::Symbol);
+            SymbolHash symbols;
+            ReferenceHash references;
+            ds >> symbols >> references;
+            leveldb::WriteBatch batch;
+            bool changed = false;
+            if (!references.isEmpty()) {
+                const ReferenceHash::const_iterator end = references.end();
+                for (ReferenceHash::const_iterator it = references.begin(); it != end; ++it) {
+                    const SymbolHash::iterator sym = symbols.find(it.value().first);
+                    if (sym != symbols.end()) {
+                        CursorInfo &ci = sym.value();
+                        ci.references.insert(it.key());
+                        // if (it.value().first.path.contains("RTags.h"))
+                        //     error() << "cramming" << it.key() << "into" << it.value();
+                        if (it.value().second != Rdm::NormalReference) {
+                            CursorInfo &other = symbols[it.key()];
+                            ci.references += other.references;
+                            other.references += ci.references;
+                            if (other.target.isNull())
+                                other.target = it.value().first;
+                            if (ci.target.isNull())
+                                ci.target = it.key();
+                        }
+                    } else {
+                        const QByteArray key = it.value().first.key(Location::Padded);
+                        CursorInfo current = Rdm::readValue<CursorInfo>(db, key.constData());
+                        bool changedCurrent = false;
+                        if (Rdm::addTo(current.references, it.key()))
+                            changedCurrent = true;
+                        if (it.value().second != Rdm::NormalReference) {
+                            const QByteArray otherKey = it.key().key(Location::Padded);
+                            CursorInfo other = Rdm::readValue<CursorInfo>(db, otherKey);
+                            bool changedOther = false;
+                            if (Rdm::addTo(other.references, it.key()))
+                                changedOther = true;
+                            if (Rdm::addTo(other.references, current.references))
+                                changedOther = true;
+                            if (Rdm::addTo(current.references, other.references))
+                                changedCurrent = true;
+
+                            if (other.target.isNull()) {
+                                other.target = it.value().first;
+                                changedOther = true;
+                            }
+
+                            if (current.target.isNull()) {
+                                current.target = it.key();
+                                changedCurrent = true;
+                            }
+
+                            if (changedOther) {
+                                Rdm::writeValue(&batch, otherKey, other);
+                                changed = true;
+                            }
+                            // error() << "ditched reference" << it.key() << it.value();
+                        }
+                        if (changedCurrent) {
+                            changed = true;
+                            Rdm::writeValue(&batch, key, current);
+                        }
+                    }
+                }
+            }
+            if (!symbols.isEmpty()) {
+                SymbolHash::iterator it = symbols.begin();
+                const SymbolHash::const_iterator end = symbols.end();
+                while (it != end) {
+                    const QByteArray key = it.key().key(Location::Padded);
+                    CursorInfo added = it.value();
+                    bool ok;
+                    CursorInfo current = Rdm::readValue<CursorInfo>(db, key.constData(), &ok);
+                    if (!ok) {
+                        Rdm::writeValue(&batch, key, added);
+                        changed = true;
+                    } else if (current.unite(added)) {
+                        changed = true;
+                        Rdm::writeValue(&batch, key, current);
+                    }
+                    ++it;
+                }
+            }
+            if (changed) {
+                db->Write(writeOptions, &batch);
+            }
+        }
+        const double pos = ds.device()->pos();
+        error("Processed %d of %d bytes %.1f%%", int(pos), int(total), (pos / total) * 100.0);
+    }
+    delete mTempFile;
+    mTempFile = 0;
+}
+void Indexer::timerEvent(QTimerEvent *e)
+{
+    if (e->timerId() == mJobsDoneTimer.timerId()) {
+        mJobsDoneTimer.stop();
+        const qint64 elapsed = mTimer.elapsed() - JobsDoneTimerTimeout;
+        error() << "jobs took" << ((double)(elapsed) / 1000.0) << "secs";
+        processDeferredData();
+        // mSyncer->notify();
+        // mSymbolSyncer->notify();
+        // mSymbolNameSyncer->notify();
+
+        Q_ASSERT(mTimerRunning);
+        mTimerRunning = false;
+        error() << "writing took" << double(mTimer.elapsed() - elapsed - JobsDoneTimerTimeout) / 1000.0 << "secs";
+        emit jobsComplete();
     }
 }
