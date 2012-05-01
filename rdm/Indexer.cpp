@@ -4,6 +4,8 @@
 #include "Indexer.h"
 #include "IndexerJob.h"
 #include "IndexerSyncer.h"
+#include "SymbolNameSyncer.h"
+#include "SymbolSyncer.h"
 #include "Path.h"
 #include "RTags.h"
 #include "Rdm.h"
@@ -29,6 +31,10 @@ Indexer::Indexer(const QByteArray& path, QObject* parent)
     mTimerRunning = false;
     mSyncer = new IndexerSyncer(this);
     mSyncer->start();
+    mSymbolNameSyncer = new SymbolNameSyncer(this);
+    mSymbolNameSyncer->start();
+    mSymbolSyncer = new SymbolSyncer(this);
+    mSymbolSyncer->start();
 
     connect(&mWatcher, SIGNAL(directoryChanged(QString)),
             this, SLOT(onDirectoryChanged(QString)));
@@ -342,6 +348,8 @@ void Indexer::onJobComplete(int id, const Path& input, bool isPch, const QByteAr
 
     if (mJobs.isEmpty()) {
         mSyncer->notify();
+        mSymbolSyncer->notify();
+        mSymbolNameSyncer->notify();
 
         Q_ASSERT(mTimerRunning);
         mTimerRunning = false;

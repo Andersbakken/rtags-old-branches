@@ -38,6 +38,7 @@ void usage(FILE *f)
             "  --verbose|-v            Change verbosity, multiple -v's are allowed\n"
             "  --clean-slate|-C        Start from a clean slate\n"
             "  --datadir|-d [arg]      Use this as datadir (default ~/.rtags\n"
+            "  --silent|-S             No logging\n"
             "  --thread-count|-j [arg] Spawn this many threads for thread pool\n");
 }
 
@@ -54,6 +55,7 @@ int main(int argc, char** argv)
         { "thread-count", required_argument, 0, 'j' },
         { "datadir", required_argument, 0, 'd' },
         { "clean-slate", no_argument, 0, 'C' },
+        { "silent", no_argument, 0, 'S' },
         { 0, 0, 0, 0 }
     };
 
@@ -75,6 +77,9 @@ int main(int argc, char** argv)
         case 'h':
             usage(stdout);
             return 0;
+        case 'S':
+            logLevel = -1;
+            break;
         case 'd':
             datadir = Path::resolved(optarg);
             break;

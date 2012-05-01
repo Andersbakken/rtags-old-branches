@@ -37,6 +37,8 @@ typedef QHash<Path, FileInformation> InformationHash;
 
 class IndexerJob;
 class IndexerSyncer;
+class SymbolNameSyncer;
+class SymbolSyncer;
 class Indexer : public QObject
 {
     Q_OBJECT;
@@ -54,6 +56,8 @@ public:
     QHash<QByteArray, Location> pchUSRHash(const QList<Path> &pchFiles) const;
     void setPchUSRHash(const Path &pch, const PchUSRHash &astHash);
     inline IndexerSyncer *syncer() const { return mSyncer; }
+    inline SymbolNameSyncer *symbolNameSyncer() const { return mSymbolNameSyncer;}
+    inline SymbolSyncer *symbolSyncer() const { return mSymbolSyncer;}
     Path path() const { return mPath; }
     void abort();
 protected:
@@ -85,7 +89,9 @@ private:
     QByteArray mPath;
     QHash<int, IndexerJob*> mJobs, mWaitingForPCH;
 
-    IndexerSyncer* mSyncer;
+    IndexerSyncer *mSyncer;
+    SymbolSyncer *mSymbolSyncer;
+    SymbolNameSyncer *mSymbolNameSyncer;
 
     bool mTimerRunning;
     QElapsedTimer mTimer;

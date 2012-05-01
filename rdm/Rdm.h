@@ -19,6 +19,15 @@ enum ReferenceType {
     MemberFunction,
     GlobalFunction
 };
+
+template <typename Container, typename Value>
+static inline bool addTo(Container &container, const Value &value)
+{
+    const int oldSize = container.size();
+    container += value;
+    return container.size() != oldSize;
+}
+
 QByteArray eatString(CXString str);
 QByteArray cursorToString(CXCursor cursor);
 void initSystemPaths(const QList<Path> &paths);
@@ -101,6 +110,44 @@ template <typename T> int writeValue(leveldb::DB *db, const char *key, const T &
             leveldb::Slice(out.constData(), out.size()));
     return out.size();
 }
+
+class Batch
+{
+public:
+    enum { BatchThreshold = 1024 * 1024 };
+    Batch(leveldb::DB *d)
+        : db(d), batchSize(0), totalWritten(0)
+    {}
+
+    ~Batch()
+    {
+        write();
+    }
+
+    void write()
+    {
+        if (batchSize) {
+            // error("About to write %d bytes to %p", batchSize, db);
+            db->Write(leveldb::WriteOptions(), &batch);
+            totalWritten += batchSize;
+            // error("Wrote %d (%d) to %p", batchSize, totalWritten, db);
+            batchSize = 0;
+            batch.Clear();
+        }
+    }
+
+    template <typename T>
+    void add(const char *key, const T &t)
+    {
+        batchSize += Rdm::writeValue<T>(&batch, key, t);
+        if (batchSize >= BatchThreshold)
+            write();
+    }
+
+    leveldb::DB *db;
+    leveldb::WriteBatch batch;
+    int batchSize, totalWritten;
+};
 
 CursorInfo findCursorInfo(leveldb::DB *db, const Location &key, Location *loc = 0);
 }

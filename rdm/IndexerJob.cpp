@@ -2,6 +2,8 @@
 #include "SHA256.h"
 #include "DependencyEvent.h"
 #include "IndexerSyncer.h"
+#include "SymbolSyncer.h"
+#include "SymbolNameSyncer.h"
 #include "Server.h"
 
 static inline QList<Path> extractPchFiles(const QList<QByteArray>& args)
@@ -322,7 +324,7 @@ void IndexerJob::execute()
     QList<QByteArray> args = mArgs + mIndexer->defaultArgs();
     if (!mPchHeaders.isEmpty())
         mPchUSRHash = mIndexer->pchUSRHash(mPchHeaders);
-    const quint64 waitingForPch = timer.restart();
+    timer.start();
 
     QVarLengthArray<const char*, 32> clangArgs(args.size());
     QByteArray clangLine = "clang ";
@@ -408,12 +410,11 @@ void IndexerJob::execute()
         }
         if (!isAborted()) {
             mIndexer->syncer()->addFileInformations(mPaths);
-            mIndexer->syncer()->addSymbols(mSymbols);
-            mIndexer->syncer()->addSymbolNames(mSymbolNames);
             mIndexer->syncer()->addFileInformation(mIn, mArgs, timeStamp);
-            mIndexer->syncer()->addReferences(mReferences);
             if (mIsPch)
                 mIndexer->setPchDependencies(mIn, mPchDependencies);
+            mIndexer->symbolSyncer()->addSymbols(mSymbols, mReferences);
+            mIndexer->symbolNameSyncer()->addSymbolNames(mSymbolNames);
         }
         clang_disposeTranslationUnit(mUnit);
         mUnit = 0;
@@ -422,10 +423,8 @@ void IndexerJob::execute()
 
     }
     char buf[1024];
-    const int w = snprintf(buf, sizeof(buf) - 1, "Visited %s in %lldms.%s",
-                           mIn.constData(), timer.elapsed(),
-                           qPrintable(waitingForPch ? QString(" Waited for pch: %1ms.").arg(waitingForPch)
-                                      : QString()));
+    const int w = snprintf(buf, sizeof(buf) - 1, "Visited %s in %lldms.",
+                           mIn.constData(), timer.elapsed());
 
     emit done(mId, mIn, mIsPch, QByteArray(buf, w));
 }
