@@ -75,6 +75,7 @@ public:
         QMutexLocker lock(&mMutex);
         if (!mTempFile) {
             mTempFile = new QTemporaryFile;
+            mTempFile->setAutoRemove(true);
             mTempFile->open();
         }
         // qDebug() << "wrote" << data.size() << "to" << mTempFile->fileName();
