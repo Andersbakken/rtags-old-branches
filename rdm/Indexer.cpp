@@ -132,7 +132,7 @@ void Indexer::init()
         batch = leveldb::WriteBatch();
     }
 
-    QSet<Path> dirty;
+    QSet<quint32> dirty;
     QHash<Path, QList<QByteArray> > toIndex, toIndexPch;
 
     it.reset(fileInformationDB->NewIterator(leveldb::ReadOptions()));

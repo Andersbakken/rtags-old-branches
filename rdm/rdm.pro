@@ -26,7 +26,8 @@ SOURCES += \
     DirtyJob.cpp \
     Job.cpp \
     TestJob.cpp \
-    MemoryMonitor.cpp
+    MemoryMonitor.cpp \
+    Location.cpp
 
 HEADERS += \
     Indexer.h \
@@ -46,4 +47,6 @@ HEADERS += \
     TestJob.h \
     CursorInfo.h \
     AbortInterface.h \
-    MemoryMonitor.h
+    MemoryMonitor.h \
+    Location.h
+

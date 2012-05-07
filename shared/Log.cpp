@@ -5,6 +5,7 @@
 #include <QMutex>
 #include <errno.h>
 #include <QCoreApplication>
+#include <QElapsedTimer>
 
 static int sLevel = 0;
 static unsigned sFlags = 0;

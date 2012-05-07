@@ -67,10 +67,11 @@ CursorInfo findCursorInfo(leveldb::DB *db, const Location &location, Location *l
     }
     if (!found && it->Valid()) {
         const leveldb::Slice k = it->key();
-        const QByteArray key = QByteArray::fromRawData(k.data(), k.size());
-        debug() << "key" << key << "needle" << needle;
-        const Location loc = Location::fromKey(key);
-        if (location.path == loc.path) {
+        Q_ASSERT(k.size() == 8);
+        // const QByteArray key = QByteArray::fromRawData(k.data(), k.size());
+        // debug() << "key" << key << "needle" << needle;
+        const Location loc = Location::fromKey(k.data());
+        if (location.fileId() == loc.fileId()) {
             const int off = location.offset - loc.offset;
             cursorInfo = Rdm::readValue<CursorInfo>(it);
             if (cursorInfo.symbolLength > off) {
@@ -213,7 +214,7 @@ int writeFileInformation(const QSet<Path> &paths)
     int totalWritten = 0;
     const FileInformation fi;
     for (QSet<Path>::const_iterator it = paths.begin(); it != paths.end(); ++it) {
-        if (!Rdm::contains(db, (*it).constData())) 
+        if (!Rdm::contains(db, (*it).constData()))
             totalWritten += batch.add((*it).constData(), fi);
     }
     return totalWritten;
