@@ -38,6 +38,7 @@ public:
 
     static Server *instance() { return sInstance; }
     inline ScopedDB db(DatabaseType type, ScopedDB::LockType lockType) const { return ScopedDB(mDBs[type], lockType); }
+    void flushDatabases();
     struct Options {
         unsigned options;
         QList<QByteArray> defaultArguments;

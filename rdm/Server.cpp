@@ -51,6 +51,13 @@ Server::~Server()
     sInstance = 0;
 }
 
+void Server::flushDatabases()
+{
+    for (int i=0; i<DatabaseTypeCount; ++i) {
+        mDBs[i]->flush();
+    }
+}
+
 bool Server::init(const Options &options)
 {
     mOptions = options.options;

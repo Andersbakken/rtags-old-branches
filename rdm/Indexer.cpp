@@ -367,6 +367,7 @@ void Indexer::onJobComplete(int id, const Path& input, bool isPch, const QByteAr
           mJobs.size() + mWaitingForPCH.size());
 
     if (mJobs.isEmpty()) {
+        Server::instance()->flushDatabases();
         Q_ASSERT(mTimerRunning);
         mTimerRunning = false;
         error() << "jobs took" << ((double)(mTimer.elapsed()) / 1000.0) << "secs"
