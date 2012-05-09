@@ -153,8 +153,6 @@ int writeSymbolNames(SymbolNameHash &symbolNames)
         ++it;
     }
 
-    db->flush();
-
     if (totalWritten && testLog(Warning)) {
         warning() << "Wrote" << symbolNames.size() << "symbolNames "
                   << totalWritten << "bytes in"
@@ -185,7 +183,6 @@ int writeDependencies(const DependencyHash &dependencies)
         }
         ++it;
     }
-    db->flush();
 
     if (totalWritten && testLog(Warning)) {
         warning() << "Wrote" << dependencies.size()
@@ -222,7 +219,6 @@ int writePchUSRHashes(const QHash<Path, PchUSRHash> &pchUSRHashes)
     for (QHash<Path, PchUSRHash>::const_iterator it = pchUSRHashes.begin(); it != pchUSRHashes.end(); ++it) {
         totalWritten += batch.add(it.key(), it.value());
     }
-    db->flush();
 
     if (testLog(Warning)) {
         warning() << "Wrote" << pchUSRHashes.size() << "pch infos,"

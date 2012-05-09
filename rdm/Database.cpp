@@ -449,7 +449,7 @@ Iterator *Database::createIterator() const
 
 void Database::flush()
 {
-    //    mDB->synchronize();
+    mDB->synchronize();
 }
 
 Batch::Batch(Database *d)
@@ -459,7 +459,7 @@ Batch::Batch(Database *d)
 Batch::~Batch()
 {
     flush();
-    mDB->flush();
+    //mDB->flush();
 }
 
 int Batch::flush()
