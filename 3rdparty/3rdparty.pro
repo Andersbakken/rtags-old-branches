@@ -1,2 +1,2 @@
 TEMPLATE = subdirs
-SUBDIRS = leveldb
+SUBDIRS = leveldb kyoto
