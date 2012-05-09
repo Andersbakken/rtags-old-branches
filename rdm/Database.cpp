@@ -381,6 +381,8 @@ Database::Database(const char *path, const Server::Options &options, bool locati
     mDB = new kyotocabinet::IndexDB;
     std::string realPath(path);
     realPath += ".kcf";
+    if (locationKeys)
+        realPath += "#comparator=dec";
     if (!mDB->open(realPath)) {
         kyotocabinet::BasicDB::Error err = mDB->error();
         mOpenError = err.message();
