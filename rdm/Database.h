@@ -1,11 +1,21 @@
 #ifndef Database_h
 #define Database_h
 
+#ifdef USE_KYOTO
+#include <kcdb.h>
+namespace kyotocabinet {
+class IndexDB;
+}
+#endif
+
 #ifdef USE_LEVELDB
 #include <leveldb/db.h>
 #include <leveldb/write_batch.h>
 #endif
+
+#include "Server.h"
 #include <QtCore>
+#include <string>
 
 struct Slice {
     Slice(const std::string &str);
@@ -20,6 +30,9 @@ private:
 #ifdef USE_LEVELDB
     Slice(const leveldb::Slice &slice);
     leveldb::Slice mSlice;
+#elif USE_KYOTO
+    const char* mSlicePtr;
+    int mSliceSize;
 #endif
     friend class Database;
     friend class Iterator;
@@ -53,6 +66,8 @@ class Iterator
 {
 #ifdef USE_LEVELDB
     Iterator(leveldb::Iterator *iterator);
+#elif USE_KYOTO
+    Iterator(kyotocabinet::BasicDB::Cursor *cursor);
 #endif
 public:
     ~Iterator();
@@ -68,6 +83,9 @@ public:
 private:
 #ifdef USE_LEVELDB
     leveldb::Iterator *mIterator;
+#elif USE_KYOTO
+    kyotocabinet::BasicDB::Cursor *mCursor;
+    bool mIsValid;
 #endif
     friend class Database;
 };
@@ -96,15 +114,18 @@ public:
     bool contains(const Slice &key) const;
     void remove(const Slice &key);
     Iterator *createIterator() const;
+    void flush();
 private:
     QReadWriteLock mLock;
 #ifdef USE_LEVELDB
     leveldb::DB *mDB;
     const leveldb::WriteOptions mWriteOptions;
-    QByteArray mOpenError;
     LocationComparator *mLocationComparator;
-    friend class Batch;
+#elif USE_KYOTO
+    kyotocabinet::IndexDB* mDB;
 #endif
+    QByteArray mOpenError;
+    friend class Batch;
 };
 
 class ScopedDB
@@ -159,11 +180,11 @@ struct Batch {
     int total() const { return mTotal; }
 private:
     int writeEncoded(const Slice &key, const Slice &data);
-#ifdef USE_LEVELDB
     Database *mDB;
-    int mSize, mTotal;
+#ifdef USE_LEVELDB
     leveldb::WriteBatch mBatch;
 #endif
+    int mSize, mTotal;
 };
 
 

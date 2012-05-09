@@ -1,6 +1,12 @@
+#ifdef USE_KYOTO
+#include <kcdbext.h>
+#include <kcdb.h>
+#endif
 #include "Database.h"
+#ifdef USE_LEVELDB
 #include <leveldb/cache.h>
 #include <leveldb/comparator.h>
+#endif
 
 #ifdef USE_LEVELDB
 
@@ -195,6 +201,10 @@ Iterator *Database::createIterator() const
     return new Iterator(mDB->NewIterator(leveldb::ReadOptions()));
 }
 
+void Database::flush()
+{
+}
+
 Batch::Batch(Database *d)
     : mDB(d), mSize(0), mTotal(0)
 {}
@@ -234,6 +244,238 @@ void Batch::remove(const Slice &key)
     mBatch.Delete(key.mSlice);
 }
 
+#elif USE_KYOTO
+
+// ================== Slice ==================
+
+Slice::Slice(const std::string &string)
+    : mSlicePtr(string.data()), mSliceSize(string.size())
+{}
+
+Slice::Slice(const QByteArray &d)
+    : mSlicePtr(d.constData()), mSliceSize(d.size())
+{}
+
+Slice::Slice(const char *d, int s)
+    : mSlicePtr(d), mSliceSize(s == -1 ? strlen(d) : s)
+{}
+
+bool Slice::operator==(const Slice &other) const
+{
+    if (mSlicePtr == other.mSlicePtr)
+        return true;
+    if (mSliceSize != other.mSliceSize)
+        return false;
+    return !memcmp(mSlicePtr, other.mSlicePtr, mSliceSize);
+}
+
+bool Slice::operator!=(const Slice &other) const
+{
+    if (mSlicePtr == other.mSlicePtr)
+        return false;
+    if (mSliceSize != other.mSliceSize)
+        return true;
+    return (memcmp(mSlicePtr, other.mSlicePtr, mSliceSize) != 0);
+}
+
+const char *Slice::data() const
+{
+    return mSlicePtr;
+}
+
+int Slice::size() const
+{
+    return mSliceSize;
+}
+
+void Slice::clear()
+{
+    mSlicePtr = "";
+    mSliceSize = 0;
+}
+
+// ================== Iterator ==================
+
+Iterator::Iterator(kyotocabinet::BasicDB::Cursor *cursor)
+    : mCursor(cursor), mIsValid(false)
+{
+}
+
+Iterator::~Iterator()
+{
+    delete mCursor;
+}
+
+void Iterator::seekToFirst()
+{
+    mIsValid = mCursor->jump();
+}
+
+void Iterator::seekToLast()
+{
+    mIsValid = mCursor->jump_back();
+}
+
+static inline bool isGreater(const char* v, size_t sz, const Slice& slice)
+{
+    const size_t cmpsz = qMin(static_cast<int>(sz), slice.size());
+    return strncmp(v, slice.data(), cmpsz) > 0;
+}
+
+void Iterator::seek(const Slice &slice)
+{
+    mIsValid = mCursor->jump(slice.mSlicePtr, slice.mSliceSize);
+    if (!mIsValid) {
+        mIsValid = mCursor->jump();
+        if (!mIsValid) {
+            return;
+        }
+        char* v;
+        size_t sz;
+        for (;;) {
+            v = mCursor->get_key(&sz, true); // 'true' means increase the cursor position
+            if (!v) {
+                mIsValid = false;
+                return;
+            }
+            if (isGreater(v, sz, slice))
+                return;
+        }
+    }
+}
+
+bool Iterator::isValid() const
+{
+    return mIsValid;
+}
+
+void Iterator::next()
+{
+    mIsValid = mCursor->step();
+}
+
+void Iterator::previous()
+{
+    mIsValid = mCursor->step_back();
+}
+
+Slice Iterator::key() const
+{
+    size_t sz;
+    char* k = mCursor->get_key(&sz);
+    return Slice(k, sz);
+}
+
+Slice Iterator::value() const
+{
+    size_t sz;
+    char* v = mCursor->get_value(&sz);
+    return Slice(v, sz);
+}
+
+// ================== Database ==================
+
+Database::Database(const char *path, const Server::Options &options, bool locationKeys)
+    : mDB(0)
+{
+    mDB = new kyotocabinet::IndexDB;
+    std::string realPath(path);
+    realPath += ".kcf";
+    if (!mDB->open(realPath)) {
+        kyotocabinet::BasicDB::Error err = mDB->error();
+        mOpenError = err.message();
+    }
+}
+
+Database::~Database()
+{
+    close();
+}
+
+bool Database::isOpened() const
+{
+    return mDB->error().code() == kyotocabinet::BasicDB::Error::SUCCESS;
+}
+
+void Database::close()
+{
+    if (mDB) {
+        mDB->close();
+        delete mDB;
+        mDB = 0;
+        mOpenError.clear();
+    }
+}
+
+QByteArray Database::openError() const
+{
+    return mOpenError;
+}
+
+std::string Database::rawValue(const Slice &key, bool *ok) const
+{
+    std::string value;
+    bool tmp;
+    if (!ok)
+        ok = &tmp;
+    *ok = mDB->get(std::string(key.data(), key.size()), &value);
+    return value;
+}
+
+int Database::setRawValue(const Slice &key, const Slice &value)
+{
+    mDB->set(key.data(), key.size(), value.data(), value.size());
+    return value.size();
+}
+
+bool Database::contains(const Slice &key) const
+{
+    bool ok = false;
+    rawValue(key, &ok);
+    return ok;
+}
+
+void Database::remove(const Slice &key)
+{
+    mDB->remove(key.data(), key.size());
+}
+
+Iterator *Database::createIterator() const
+{
+    return new Iterator(mDB->cursor());
+}
+
+void Database::flush()
+{
+    mDB->synchronize();
+}
+
+Batch::Batch(Database *d)
+    : mDB(d), mSize(0), mTotal(0)
+{}
+
+Batch::~Batch()
+{
+    flush();
+    mDB->flush();
+}
+
+int Batch::flush()
+{
+    return 0;
+}
+
+int Batch::writeEncoded(const Slice &key, const Slice &data)
+{
+    mDB->mDB->set(key.data(), key.size(), data.data(), data.size());
+    return data.size();
+}
+
+
+void Batch::remove(const Slice &key)
+{
+    mDB->mDB->remove(key.data(), key.size());
+}
 #else
 #error No Datatype selected
 #endif
