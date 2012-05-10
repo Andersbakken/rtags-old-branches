@@ -13,7 +13,6 @@ class IndexDB;
 #include <leveldb/write_batch.h>
 #endif
 
-#include "Server.h"
 #include <QtCore>
 #include <string>
 

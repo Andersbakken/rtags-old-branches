@@ -6,8 +6,8 @@ TEMPLATE = app
 TARGET =
 DEPENDPATH += .
 INCLUDEPATH += . ../3rdparty/leveldb/src/include ../3rdparty/kyoto/src
-#DEFINES += USE_LEVELDB BUILDING_RDM USE_LEVELDB
-DEFINES += USE_LEVELDB BUILDING_RDM USE_KYOTO
+#DEFINES += BUILDING_RDM USE_LEVELDB
+DEFINES += BUILDING_RDM USE_KYOTO
 include(../shared/shared.pri)
 include(../shared/clang.pri)
 

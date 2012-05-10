@@ -375,7 +375,7 @@ Slice Iterator::value() const
 
 // ================== Database ==================
 
-Database::Database(const char *path, const Server::Options &options, bool locationKeys)
+Database::Database(const char *path, int /*cacheSizeMB*/, bool locationKeys)
     : mDB(0)
 {
     mDB = new kyotocabinet::IndexDB;
