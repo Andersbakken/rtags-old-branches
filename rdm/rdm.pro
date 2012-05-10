@@ -11,6 +11,8 @@ DEFINES += BUILDING_RDM USE_KYOTO
 include(../shared/shared.pri)
 include(../shared/clang.pri)
 
+CONFIG += warn_off
+
 # Input
 SOURCES += \
     main.cpp \
