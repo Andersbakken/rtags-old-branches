@@ -103,7 +103,7 @@
 (defun rtags-save-location()
   (setq rtags-last-buffer (current-buffer))
   (setq rtags-path-filter (rtags-default-current-project))
-  (rtags-bookmark-push))
+  (rtags-bookmarks-push))
 
 (defun rtags-goto-location(location &optional nobookmark)
   "Go to a location passed in. It can be either: file,12 or file:13:14"
@@ -115,14 +115,14 @@
            (goto-char (point-min))
            (forward-line (- line 1))
            (forward-char (- column 1))
-           (unless nobookmark (rtags-bookmark-push))
+           (unless nobookmark (rtags-bookmarks-push))
            t))
         ((string-match "\\(.*\\),\\([0-9]+\\)" location)
          (let ((offset (string-to-int (match-string 2 location))))
            (find-file (match-string 1 location))
            (run-hooks rtags-after-find-file-hook)
            (goto-char (+ offset 1))
-           (unless nobookmark (rtags-bookmark-push))
+           (unless nobookmark (rtags-bookmarks-push))
            t))
         (t nil))
   )
@@ -178,44 +178,52 @@
             ((eq code t) (rtags-symbolname-completion-get string))
             ((eq code 'lambda) (rtags-symbolname-completion-exactmatch string)))))
 
-(defvar rtags-bookmark-index 0)
-(defvar rtags-bookmarks nil)
+(defvar rtags-bookmarks-index 0)
+(defvar rtags-bookmarks-count 0)
 
-(defun rtags-bookmark-push ()
-  (let ((bm (rtags-current-location)))
-    (while (> rtags-bookmark-index 0)
-      (progn
-        (setq rtags-bookmark-index (- rtags-bookmark-index 1))
-        (pop rtags-bookmarks)
-        )
+(defun rtags-bookmarks-name (&optional index)
+  (format "RTags %d" (if index index rtags-bookmarks-index)))
+
+(defun rtags-bookmarks-is-here (&optional bmname)
+  (unless bmname
+    (setq bmname (rtags-bookmarks-name)))
+  (if (member bmname (bookmark-all-names))
+      (and (string= (buffer-file-name) (expand-file-name (bookmark-get-filename bmname)))
+           (= (point) (bookmark-get-position bmname))))
+  )
+
+
+(defun rtags-bookmarks-push ()
+  (while (> rtags-bookmarks-count rtags-bookmarks-index)
+    (progn
+      (setq rtags-bookmarks-count (- rtags-bookmarks-count 1))
+      (bookmark-delete (rtags-bookmarks-name rtags-bookmarks-count))
       )
-    (unless (string= bm (nth 0 rtags-bookmarks))
-      (push bm rtags-bookmarks)
-      (if (> (length rtags-bookmarks) rtags-max-bookmark-count)
-          (nbutlast rtags-bookmarks (- (length rtags-bookmarks) rtags-max-bookmark-count))
-        )
+    )
+  (unless (rtags-bookmarks-is-here)
+    (progn
+      (setq rtags-bookmarks-index (+ rtags-bookmarks-index 1))
+      (setq rtags-bookmarks-count (+ rtags-bookmarks-count 1))
+      (bookmark-set (rtags-bookmarks-name))
+      ; ### make sure the list doesn't grow too long
       )
     )
   )
 
-(defun rtags-bookmark-jump (by)
+(defun rtags-bookmarks-jump (by)
   (interactive)
-  (let ((instack (nth rtags-bookmark-index rtags-bookmarks))
-        (cur (loc)))
-    (if (not (string= instack cur))
-        (rtags-goto-location instack t)
-      (let ((target (+ rtags-bookmark-index by)))
-        (if (and (>= target 0) (< target (length rtags-bookmarks)))
-            (progn
-              (setq rtags-bookmark-index target)
-              (rtags-goto-location (nth rtags-bookmark-index rtags-bookmarks) t)
-              )
-          )
+  (if (not (rtags-bookmarks-is-here))
+      (bookmarks-jump (rtags-bookmarks-name))
+    (let ((target (+ rtags-bookmarks-index by)))
+      (if (and (>= target 0) (< target (length rtags-bookmarks)))
+          (progn
+            (setq rtags-bookmarks-index target)
+            (bookmarks-jump (rtags-bookmarks-name))
+            )
         )
       )
     )
   )
-
 
 ; **************************** API *********************************
 
@@ -230,7 +238,7 @@ return t if rtags is allowed to modify this file"
   :group 'rtags
   :type 'boolean)
 
-(defcustom rtags-max-bookmark-count 100
+(defcustom rtags-max-bookmarks-count 100
   "How many bookmarks to keep in stack"
   :group 'rtags
   :type 'integer)
@@ -250,9 +258,9 @@ return t if rtags is allowed to modify this file"
   (define-key map (kbd "C-x r ,") (function rtags-find-references-at-point))
   (define-key map (kbd "C-x r >") (function rtags-find-symbol))
   (define-key map (kbd "C-x r <") (function rtags-find-references))
-  (define-key map (kbd "C-x r [") (function rtags-bookmark-back))
-  (define-key map (kbd "C-x r ]") (function rtags-bookmark-forward))
-  (define-key map (kbd "C-x r \\") (function rtags-bookmark-current))
+  (define-key map (kbd "C-x r [") (function rtags-bookmarks-back))
+  (define-key map (kbd "C-x r ]") (function rtags-bookmarks-forward))
+  (define-key map (kbd "C-x r \\") (function rtags-bookmarks-current))
   (define-key map (kbd "C-x r F") (function rtags-fixit))
   (define-key map (kbd "C-x r C") (function rtags-clear-rdm))
   (define-key map (kbd "C-x r M") (function rtags-index-project))
@@ -270,20 +278,20 @@ return t if rtags is allowed to modify this file"
   (if (or dontask (y-or-n-p "This will clear the database. Are you sure?"))
       (call-process (executable-find "rc") nil nil nil "-C")))
 
-(defun rtags-bookmark-forward()
+(defun rtags-bookmarks-forward()
   (interactive)
-  (rtags-bookmark-jump -1)
+  (rtags-bookmarks-jump 1)
   )
 
-(defun rtags-bookmark-back()
+(defun rtags-bookmarks-back()
   (interactive)
-  (rtags-bookmark-jump 1)
+  (rtags-bookmarks-jump -1)
   )
 
 (defun rtags-bookmarks-reset ()
   (interactive)
   (setq rtags-bookmarks nil)
-  (setq rtags-bookmark-index 0)
+  (setq rtags-bookmarks-index 0)
   )
 
 (defun rtags-index-project ()
