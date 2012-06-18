@@ -82,6 +82,7 @@ template <> inline QByteArray encode(const CursorInfo &info)
     *isDefinitionPtr++ = info.isDefinition;
     quint64 *locPtr = reinterpret_cast<quint64*>(isDefinitionPtr);
     *locPtr++ = info.target.mData;
+    *locPtr++ = info.parent.mData;
     foreach(const Location &loc, info.references) {
         *locPtr++ = loc.mData;
     }
@@ -100,6 +101,7 @@ template <> inline CursorInfo decode(const Slice &slice)
     const quint64 *locPtr = reinterpret_cast<const quint64*>(isDefinitionPtr);
     const int count = ((slice.size() - ret.symbolName.size() - sizeof(char) - (sizeof(quint32) * 2) - sizeof(quint8)) / sizeof(quint64));
     ret.target.mData = *locPtr++;
+    ret.parent.mData = *locPtr++;
     for (int i=0; i<count - 1; ++i) {
         const Location loc(*locPtr++);
         ret.references.insert(loc);

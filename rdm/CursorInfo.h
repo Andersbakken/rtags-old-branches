@@ -23,6 +23,7 @@ public:
         kind = CXCursor_FirstInvalid;
         isDefinition = false;
         target.clear();
+        parent.clear();
         references.clear();
         symbolName.clear();
     }
@@ -33,6 +34,11 @@ public:
         if (fileIds.contains(target.fileId())) {
             changed = true;
             target.clear();
+        }
+
+        if (fileIds.contains(parent.fileId())) {
+            changed = true;
+            parent.clear();
         }
 
         QSet<Location>::iterator it = references.begin();
@@ -52,6 +58,11 @@ public:
         bool changed = false;
         if (target.isNull() && !other.target.isNull()) {
             target = other.target;
+            changed = true;
+        }
+
+        if (parent.isNull() && !other.parent.isNull()) {
+            parent = other.parent;
             changed = true;
         }
 
@@ -89,7 +100,7 @@ public:
     QByteArray symbolName; // this is fully qualified Foobar::Barfoo::foo
     CXCursorKind kind;
     bool isDefinition;
-    Location target;
+    Location target, parent; // parent is class/struct/namespace
     QSet<Location> references;
 };
 

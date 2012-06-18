@@ -366,6 +366,18 @@ CXChildVisitResult IndexerJob::processCursor(const Cursor &cursor, const Cursor 
             mSymbols.remove(cursor.location);
             return CXChildVisit_Recurse;
         }
+        CXCursor parent = clang_getCursorSemanticParent(cursor.cursor);
+        switch (clang_getCursorKind(parent)) {
+        case CXCursor_Namespace:
+        case CXCursor_ClassDecl:
+        case CXCursor_StructDecl: {
+            const Location ploc = createLocation(parent, 0);
+            info.parent = ploc;
+            break; }
+        default:
+            break;
+
+        }
         info.symbolName = addNamePermutations(cursor.cursor, cursor.location, !isReference);
     } else if (info.kind == CXCursor_Constructor && cursor.kind == CXCursor_TypeRef) {
         return CXChildVisit_Recurse;
