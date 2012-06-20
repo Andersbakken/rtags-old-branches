@@ -167,7 +167,7 @@ void DirectoryTracker::track(const ByteArray& line)
     }
     void MakefileParser::onError(QProcess::ProcessError err)
     {
-        error() << "Error" << err << mProc->errorString();
+        error() << "Error" << err << mProc->errorString().toStdString();
     }
     void MakefileParser::onProcessStateChanged(QProcess::ProcessState state)
     {
@@ -175,7 +175,7 @@ void DirectoryTracker::track(const ByteArray& line)
     }
     void MakefileParser::onReadyReadStandardError()
     {
-        debug() << "stderr" << mProc->readAllStandardError();
+        debug() << "stderr" << mProc->readAllStandardError().constData();
     }
     List<ByteArray> MakefileParser::mapPchToInput(const List<ByteArray> &input) const
     {

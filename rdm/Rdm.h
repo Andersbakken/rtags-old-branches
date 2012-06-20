@@ -7,7 +7,6 @@
 #include <clang-c/Index.h>
 #include <Path.h>
 #include <RTags.h>
-#include <QDebug>
 #include "Mutex.h"
 #include "MutexLocker.h"
 #include "Location.h"
@@ -199,13 +198,13 @@ private:
     Connection *mConnection;
 };
 }
-static inline QDebug operator<<(QDebug dbg, CXCursor cursor)
+static inline Log &operator<<(Log &dbg, CXCursor cursor)
 {
     dbg << Rdm::cursorToString(cursor).constData();
     return dbg;
 }
 
-static inline QDebug operator<<(QDebug dbg, CXCursorKind kind)
+static inline Log &operator<<(Log &dbg, CXCursorKind kind)
 {
     dbg << Rdm::eatString(clang_getCursorKindSpelling(kind)).constData();
     return dbg;

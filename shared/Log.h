@@ -2,7 +2,6 @@
 #define Log_h
 
 #include <QString>
-#include <QDebug>
 #include <QExplicitlySharedDataPointer>
 #include <QSharedData>
 #include <QVariant>
@@ -10,6 +9,8 @@
 #include <Map.h>
 #include <Set.h>
 #include <List.h>
+#include <sstream>
+#include <Path.h>
 
 class Path;
 
@@ -91,9 +92,15 @@ public:
     template <typename T> Log &operator<<(const T &t)
     {
         if (mData) {
-            *mData->dbg << t;
-            return *this;
+            mData->dbg << t;
         }
+        return *this;
+    }
+
+    Log &operator<<(const Path &path)
+    {
+        if (mData)
+            mData->dbg << path.constData();
         return *this;
     }
 
@@ -101,27 +108,24 @@ public:
     {
         if (mData) {
             ByteArray out;
-            if (mData->out.isEmpty())
+            if (mData->dbg.str().empty())
                 out += '\n';
-            out += "std::vector<";
+            mData->dbg << "List<";
             {
                 T key;
                 const QVariant variant = qVariantFromValue<T>(key);
-                out += variant.typeName();
-                out += ">(";
+                mData->dbg << variant.typeName() << ">(";
             }
-            *mData->dbg << out.constData();
             bool first = true;
             for (typename std::vector<T>::const_iterator it = vector.begin(); it != vector.end(); ++it) {
                 if (!first) {
-                    mData->dbg->nospace() << ", ";
+                    mData->dbg << ", ";
                 } else {
                     first = false;
                 }
-                mData->dbg->nospace() << *it;
+                operator<<(*it);
             }
-            *mData->dbg << ")";
-            mData->dbg->maybeSpace();
+            mData->dbg << ")";
             return *this;
         }
         return *this;
@@ -131,31 +135,31 @@ public:
     template <typename K, typename V> Log &operator<<(const Map<K, V> &hash)
     {
         if (mData) {
-            ByteArray out = "Map<";
+            if (!mData->dbg.str().empty())
+                mData->dbg << '\n';
+            mData->dbg << "Map<";
             {
                 const K key;
                 const QVariant variant = qVariantFromValue<K>(key);
-                if (!mData->out.isEmpty())
-                    out.prepend('\n');
-                out += variant.typeName();
+                mData->dbg << variant.typeName() << ", ";
             }
-            out += ", ";
             {
                 const V value;
                 QVariant variant = qVariantFromValue<V>(value);
-                out += variant.typeName();
-                if (out.endsWith('>'))
-                    out += ' ';
-                out += ">(";
+                mData->dbg << variant.typeName();
+                if (mData->dbg.str().at(mData->dbg.str().size() - 1) == '>')
+                    mData->dbg << ' ';
+                mData->dbg << ">(";
             }
-            *mData->dbg << out.constData();
-            mData->dbg->nospace() << '\n';
+            mData->dbg << '\n';
             for (typename Map<K, V>::const_iterator it = hash.begin(); it != hash.end(); ++it) {
-                mData->dbg->nospace() << "  " << it.key() << ": " << it.value();
-                mData->dbg->nospace() << '\n';
+                mData->dbg << "  ";
+                operator<<(it.key());
+                mData->dbg << ": ";
+                operator<<(it.value());
+                mData->dbg << '\n';
             }
-            *mData->dbg << ")\n";
-            mData->dbg->maybeSpace();
+            mData->dbg << ")\n";
             return *this;
         }
         return *this;
@@ -164,28 +168,24 @@ public:
     template <typename K> Log &operator<<(const Set<K> &set)
     {
         if (mData) {
-            ByteArray out;
-            if (mData->out.isEmpty())
-                out += '\n';
-            out += "Set<";
+            if (!mData->dbg.str().empty())
+                mData->dbg << '\n';
+            mData->dbg << "Set<";
             {
                 K key;
                 const QVariant variant = qVariantFromValue<K>(key);
-                out += variant.typeName();
-                out += ">(";
+                mData->dbg << variant.typeName() << ">(";
             }
-            *mData->dbg << out.constData();
             bool first = true;
             for (typename Set<K>::const_iterator it = set.begin(); it != set.end(); ++it) {
                 if (!first) {
-                    mData->dbg->nospace() << ", ";
+                    mData->dbg << ", ";
                 } else {
                     first = false;
                 }
-                mData->dbg->nospace() << *it;
+                operator<<(*it);
             }
-            *mData->dbg << ")";
-            mData->dbg->maybeSpace();
+            mData->dbg << ')';
             return *this;
         }
         return *this;
@@ -199,21 +199,24 @@ private:
         Data(int lvl)
             : level(lvl)
         {
-            dbg = new QDebug(&out);
         }
         ~Data()
         {
-            delete dbg;
-            log(level, "%s", qPrintable(out.trimmed()));
+            log(level, "%s", dbg.str().c_str());
         }
 
         const int level;
-        QDebug *dbg;
-        QString out;
+        std::ostringstream dbg;
     };
 
     QExplicitlySharedDataPointer<Data> mData;
 };
+
+inline Log &operator<<(Log &log, const ByteArray &byteArray)
+{
+    log << byteArray.constData();
+    return log;
+}
 
 static inline Log error()
 {

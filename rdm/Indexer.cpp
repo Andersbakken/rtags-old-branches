@@ -122,7 +122,7 @@ void Indexer::initDB(InitMode mode, const ByteArray &pattern)
                 if (!fi.compileArgs.isEmpty()) {
 #ifdef QT_DEBUG
                     if (path.isHeader() && !Rdm::isPch(fi.compileArgs)) {
-                        error() << path << fi.compileArgs << fileId;
+                        error() << path; // << fi.compileArgs << fileId;
                         Q_ASSERT(0);
                     }
 #endif
@@ -267,7 +267,7 @@ void Indexer::startJob(int id, IndexerJob *job)
 
 void Indexer::onDirectoryChanged(const QString &path)
 {
-    const Path p(ByteArray(path.toLocal8Bit()));
+    const Path p(ByteArray(path.toStdString()));
     Set<uint32_t> dirtyFiles;
     Map<Path, List<ByteArray> > toIndex, toIndexPch;
 
