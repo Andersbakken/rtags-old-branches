@@ -91,9 +91,9 @@ public:
     Log &operator=(const Log &other);
     template <typename T> Log &operator<<(const T &t)
     {
-        if (mData) {
-            mData->dbg << t;
-        }
+        // if (mData) {
+        //     mData->dbg << t;
+        // }
         return *this;
     }
 
