@@ -1,4 +1,5 @@
 #include "LocalClient.h"
+#include "Event.h"
 #include "EventLoop.h"
 #include <unistd.h>
 #include <Timer.h>
@@ -7,6 +8,17 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <algorithm>
+
+class DelayedWriteEvent : public Event
+{
+public:
+    enum { Type = 1 };
+    DelayedWriteEvent(const ByteArray& d)
+        : Event(Type), data(d)
+    {}
+
+    const ByteArray data;
+};
 
 LocalClient::LocalClient()
     : mFd(-1), mBufferIdx(0)
@@ -102,8 +114,12 @@ int LocalClient::read(char *buf, int size)
 
 void LocalClient::write(const ByteArray& data)
 {
-    mBuffers.push_back(data);
-    writeMore();
+    if (pthread_equal(pthread_self(), EventLoop::instance()->thread())) {
+        mBuffers.push_back(data);
+        writeMore();
+    } else {
+        EventLoop::instance()->postEvent(this, new DelayedWriteEvent(data));
+    }
 }
 
 void LocalClient::readMore()
@@ -143,7 +159,8 @@ void LocalClient::readMore()
 
 void LocalClient::writeMore()
 {
-    printf("%p [%s] %s:%d: void LocalClient::writeMore() [after]\n", (void*)pthread_self(), __func__, __FILE__, __LINE__);
+    // printf("Writemore called %p %p\n", (void*)pthread_self(),
+    //        (void*)EventLoop::instance()->thread());
     int written = 0;
     for (;;) {
         if (mBuffers.empty())
@@ -156,7 +173,6 @@ void LocalClient::writeMore()
         mBufferIdx += w;
         if (mBufferIdx == front.size()) {
             assert(!mBuffers.empty());
-            printf("about to pop %d %d\n", mBuffers.size(), mBuffers.empty());
             mBuffers.pop_front();
             mBufferIdx = 0;
             continue;
@@ -166,3 +182,14 @@ void LocalClient::writeMore()
         mBytesWritten(written);
 }
 
+void LocalClient::event(Event* event)
+{
+    if (event->type() == DelayedWriteEvent::Type) {
+        DelayedWriteEvent *ev = static_cast<DelayedWriteEvent*>(event);
+        assert(pthread_equal(pthread_self(), EventLoop::instance()->thread()));
+        mBuffers.push_back(ev->data);
+        writeMore();
+    } else {
+        assert(0);
+    }
+}

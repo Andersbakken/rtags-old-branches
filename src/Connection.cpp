@@ -60,7 +60,7 @@ void ConnectionPrivate::dataAvailable()
         assert(id > 0 && Connection::sMetas.contains(id));
 
         Connection::Meta m = Connection::sMetas.value(id);
-        QObject *newobj = m.meta->newInstance(Q_ARG(QObject*, conn));
+        QObject *newobj = m.meta->newInstance(); //Q_ARG(QObject*, conn));
         m.meta->method(m.fromByteArrayId).invoke(newobj, Q_ARG(ByteArray, ByteArray(payload.constData(), payload.size())));
         emit conn->newMessage(qobject_cast<Message*>(newobj));
 

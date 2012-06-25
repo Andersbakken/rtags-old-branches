@@ -28,6 +28,7 @@ public:
     void run();
     void exit();
 
+    pthread_t thread() const { return mThread; }
 private:
     void handlePipe();
     void sendPostedEvents();
@@ -54,6 +55,8 @@ private:
     std::vector<EventData> mEvents;
 
     static EventLoop* sInstance;
+
+    pthread_t mThread;
 };
 
 class EventLoopThread : public Thread

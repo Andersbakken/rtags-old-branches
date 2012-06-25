@@ -11,7 +11,7 @@
 EventLoop* EventLoop::sInstance = 0;
 
 EventLoop::EventLoop()
-    : mQuit(false)
+    : mQuit(false), mThread(0)
 {
     if (!sInstance)
         sInstance = this;
@@ -84,6 +84,7 @@ void EventLoop::postEvent(EventReceiver* receiver, Event* event)
 
 void EventLoop::run()
 {
+    mThread = pthread_self();
     fd_set rset, wset;
     int max;
     for (;;) {
@@ -162,6 +163,7 @@ void EventLoop::sendPostedEvents()
         mEvents.erase(first);
         locker.unlock();
         data.receiver->event(data.event);
+        delete data.event;
         locker.relock();
     }
 }
