@@ -182,10 +182,10 @@ void LocalClient::writeMore()
         mBytesWritten(written);
 }
 
-void LocalClient::event(Event* event)
+void LocalClient::event(const Event* event)
 {
     if (event->type() == DelayedWriteEvent::Type) {
-        DelayedWriteEvent *ev = static_cast<DelayedWriteEvent*>(event);
+        const DelayedWriteEvent *ev = static_cast<const DelayedWriteEvent*>(event);
         assert(pthread_equal(pthread_self(), EventLoop::instance()->thread()));
         mBuffers.push_back(ev->data);
         writeMore();

@@ -12,6 +12,7 @@
 #include "Job.h"
 #include "Rdm.h"
 #include "ScopedDB.h"
+#include "EventReceiver.h"
 
 class Connection;
 class Indexer;
@@ -22,7 +23,7 @@ class MakefileMessage;
 class LocalServer;
 class Database;
 class GccArguments;
-class Server : public QObject
+class Server : public QObject, public EventReceiver
 {
     Q_OBJECT
 public:
@@ -63,14 +64,14 @@ public:
     static Path pchDir();
     ThreadPool *threadPool() const { return mThreadPool; }
     void onNewConnection();
+protected:
+    void event(const Event *event);
 signals:
     void complete(int id, const List<ByteArray> &locations);
 private slots:
     void onFileReady(const GccArguments &file);
     void onNewMessage(Message *message);
     void onIndexingDone(int id);
-    void onComplete(int id);
-    void onOutput(int id, const ByteArray &response);
     void onConnectionDestroyed(QObject *o);
     void onMakefileParserDone(int sourceCount, int pchCount);
     void onMakefileModified(const Path &path);

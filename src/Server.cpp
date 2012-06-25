@@ -1,5 +1,6 @@
 #include "Server.h"
 
+#include "Event.h"
 #include "Client.h"
 #include <QObject>
 #include "LocalClient.h"
@@ -418,23 +419,6 @@ void Server::onIndexingDone(int id)
     it->second->send(&msg);
 }
 
-void Server::onComplete(int id)
-{
-    Map<int, Connection*>::iterator it = mPendingLookups.find(id);
-    if (it == mPendingLookups.end())
-        return;
-    it->second->finish();
-}
-
-void Server::onOutput(int id, const ByteArray &response)
-{
-    Map<int, Connection*>::iterator it = mPendingLookups.find(id);
-    if (it == mPendingLookups.end())
-        return;
-    ResponseMessage msg(response);
-    it->second->send(&msg);
-}
-
 int Server::nextId()
 {
     ++mJobId;
@@ -675,8 +659,6 @@ void Server::remake(const ByteArray &pattern, Connection *conn)
 
 void Server::startJob(Job *job)
 {
-    connect(job, SIGNAL(complete(int)), this, SLOT(onComplete(int)));
-    connect(job, SIGNAL(output(int, ByteArray)), this, SLOT(onOutput(int, ByteArray)));
     mThreadPool->start(job, job->priority());
 }
 
@@ -737,3 +719,28 @@ void Server::onMakefileRemoved(const Path &path)
     general->setValue("makefiles", mMakefiles);
 }
 
+void Server::event(const Event *event)
+{
+    switch (event->type()) {
+    case JobCompleteEvent::Type: {
+        const JobCompleteEvent *e = static_cast<const JobCompleteEvent*>(event);
+        Map<int, Connection*>::iterator it = mPendingLookups.find(e->job->id());
+        if (it == mPendingLookups.end())
+            return;
+        it->second->finish();
+        break; }
+    case JobOutputEvent::Type: {
+        const JobOutputEvent *e = static_cast<const JobOutputEvent*>(event);
+        Map<int, Connection*>::iterator it = mPendingLookups.find(e->job->id());
+        if (it == mPendingLookups.end())
+            break;
+        ResponseMessage msg(e->out);
+        it->second->send(&msg);
+        break; }
+    default:
+        assert(0);
+        break;
+    }
+    // connect(job, SIGNAL(complete(int)), this, SLOT(onComplete(int)));
+    // connect(job, SIGNAL(output(int, ByteArray)), this, SLOT(onOutput(int, ByteArray)));
+}

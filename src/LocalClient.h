@@ -27,7 +27,7 @@ public:
     signalslot::Signal0& disconnected() { return mDisconnected; }
     signalslot::Signal1<int>& bytesWritten() { return mBytesWritten; }
 protected:
-    virtual void event(Event* event);
+    virtual void event(const Event* event);
 private:
     static void dataCallback(int fd, unsigned int flags, void* userData);
 
