@@ -3,6 +3,7 @@
 
 #include "Mutex.h"
 #include "WaitCondition.h"
+#include "Thread.h"
 #include <vector>
 
 class Event;
@@ -54,5 +55,19 @@ private:
 
     static EventLoop* sInstance;
 };
+
+class EventLoopThread : public Thread
+{
+public:
+    EventLoopThread()
+    {}
+
+protected:
+    void run()
+    {
+        EventLoop::instance()->run();
+    }
+};
+
 
 #endif

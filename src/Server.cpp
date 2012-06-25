@@ -1,31 +1,35 @@
-#include "Connection.h"
-#include "FollowLocationJob.h"
-#include "MakefileParser.h"
-#include "Indexer.h"
-#include "RegExp.h"
+#include "Server.h"
+
 #include "Client.h"
+#include <QObject>
+#include "LocalClient.h"
+#include "Connection.h"
 #include "CursorInfoJob.h"
-#include "ListSymbolsJob.h"
+#include "Database.h"
+#include "EventObject.h"
 #include "FindSymbolsJob.h"
+#include "FollowLocationJob.h"
+#include "Indexer.h"
+#include "IndexerJob.h"
+#include "ListSymbolsJob.h"
+#include "LocalServer.h"
+#include "LogObject.h"
+#include "MakefileMessage.h"
+#include "MakefileParser.h"
 #include "Message.h"
 #include "Messages.h"
-#include "LogObject.h"
-#include "EventObject.h"
-#include "Path.h"
-#include "TestJob.h"
-#include "RunTestJob.h"
-#include "QueryMessage.h"
 #include "OutputMessage.h"
-#include "MakefileMessage.h"
+#include "Path.h"
+#include "QueryMessage.h"
 #include "Rdm.h"
 #include "ReferencesJob.h"
+#include "RegExp.h"
+#include "RunTestJob.h"
 #include "SHA256.h"
-#include "IndexerJob.h"
-#include "Server.h"
 #include "StatusJob.h"
-#include "Database.h"
-#include "leveldb/db.h"
+#include "TestJob.h"
 #include "leveldb/cache.h"
+#include "leveldb/db.h"
 #include <Log.h>
 #include <clang-c/Index.h>
 #include <stdio.h>
@@ -127,7 +131,7 @@ bool Server::init(const Options &options)
     Messages::init();
 
     for (int i=0; i<10; ++i) {
-        mServer = new QLocalServer(this);
+        mServer = new LocalServer;
         if (mServer->listen(mOptions.name)) {
             break;
         }
@@ -142,7 +146,7 @@ bool Server::init(const Options &options)
         QFile::remove(mOptions.name);
     }
     if (!mServer) {
-        error("Unable to listen to port %d", Connection::Port);
+        error("Unable to listen on %s", mOptions.name.constData());
         return false;
     }
 
@@ -191,8 +195,8 @@ bool Server::init(const Options &options)
         }
         Location::init(pathsToIds, idsToPaths, maxId);
     }
+    mServer->clientConnected().connect(this, &Server::onNewConnection);
 
-    connect(mServer, SIGNAL(newConnection()), this, SLOT(onNewConnection()));
     error() << "running with " << mOptions.defaultArguments << " clang version " << Rdm::eatString(clang_getClangVersion());
 
     mIndexer = new Indexer(sBase, this);
@@ -205,12 +209,15 @@ bool Server::init(const Options &options)
 
 void Server::onNewConnection()
 {
-    while (mServer->hasPendingConnections()) {
-        QLocalSocket *socket = mServer->nextPendingConnection();
-        Connection *conn = new Connection(socket, this);
+    forever {
+        LocalClient *client = mServer->nextClient();
+        if (!client)
+            break;
+        Connection *conn = new Connection(client);
         connect(conn, SIGNAL(newMessage(Message*)), this, SLOT(onNewMessage(Message*)));
-        connect(socket, SIGNAL(disconnected()), conn, SLOT(deleteLater()));
         connect(conn, SIGNAL(destroyed(QObject*)), this, SLOT(onConnectionDestroyed(QObject*)));
+#warning we dont handle disconnected yet
+        // client->disconnected().connect(this, &QObject::deleteLater);
     }
 }
 

@@ -19,7 +19,7 @@ class Message;
 class ErrorMessage;
 class OutputMessage;
 class MakefileMessage;
-class QLocalServer;
+class LocalServer;
 class Database;
 class GccArguments;
 class Server : public QObject
@@ -62,11 +62,11 @@ public:
     static Path databaseDir(DatabaseType type);
     static Path pchDir();
     ThreadPool *threadPool() const { return mThreadPool; }
+    void onNewConnection();
 signals:
     void complete(int id, const List<ByteArray> &locations);
 private slots:
     void onFileReady(const GccArguments &file);
-    void onNewConnection();
     void onNewMessage(Message *message);
     void onIndexingDone(int id);
     void onComplete(int id);
@@ -101,7 +101,7 @@ private:
     static Server *sInstance;
     Options mOptions;
     Indexer *mIndexer;
-    QLocalServer *mServer;
+    LocalServer *mServer;
     Map<int, Connection*> mPendingIndexes;
     Map<int, Connection*> mPendingLookups;
     bool mVerbose;
