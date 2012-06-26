@@ -6,10 +6,11 @@
 #include <QObject>
 #include <List.h>
 #include <Map.h>
-#include <QProcess>
 
 class DirectoryTracker;
 class Connection;
+class Process;
+
 class MakefileParser : public QObject
 {
     Q_OBJECT
@@ -24,21 +25,18 @@ public:
     void setPch(const ByteArray &output, const ByteArray &input);
     Path makefile() const { return mMakefile; }
     Connection *connection() const { return mConnection; }
+
 signals:
     void done(int sources, int pchs);
     void fileReady(const GccArguments &args);
 
-private slots:
-    void onDone();
-    void processMakeOutput();
-    void onReadyReadStandardError();
-    void onError(QProcess::ProcessError error);
-    void onProcessStateChanged(QProcess::ProcessState state);
 private:
+    void processMakeOutput();
     void processMakeLine(const ByteArray &line);
+    void onDone();
 
 private:
-    QProcess *mProc;
+    Process *mProc;
     ByteArray mData;
     DirectoryTracker *mTracker;
     const List<ByteArray> mExtraFlags;
