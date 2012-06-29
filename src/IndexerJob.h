@@ -22,8 +22,7 @@ public:
         FixIt = 0x020
     };
     IndexerJob(Indexer *indexer, int id, unsigned flags,
-               const Path &input, const List<ByteArray> &arguments,
-               const Set<uint32_t> &dirty);
+               const Path &input, const List<ByteArray> &arguments);
     int priority() const { return mFlags & Priorities; }
     virtual void run();
     void execute();
@@ -64,10 +63,9 @@ public:
     const uint32_t mFileId;
     const List<ByteArray> mArgs;
     DependencyMap mDependencies;
-    Set<uint32_t> mPchDependencies;
+    Set<uint32_t> mPchDependencies, mIndexed, mReferenced;
     Indexer *mIndexer;
     Map<ByteArray, Location> mPchUSRMap;
-    const Set<uint32_t> mDirty;
 
     List<Path> mPchHeaders;
     CXTranslationUnit mUnit;

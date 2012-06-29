@@ -26,15 +26,13 @@ static inline List<Path> extractPchFiles(const List<ByteArray> &args)
 }
 
 IndexerJob::IndexerJob(Indexer *indexer, int id, unsigned flags,
-                       const Path &input, const List<ByteArray> &arguments,
-                       const Set<uint32_t> &dirty)
+                       const Path &input, const List<ByteArray> &arguments)
 
     : mId(id), mFlags(flags), mIsPch(false), mDoneFullUSRScan(false), mIn(input),
       mFileId(Location::insertFile(input)), mArgs(arguments), mIndexer(indexer),
-      mDirty(dirty), mPchHeaders(extractPchFiles(arguments)), mUnit(0)
+      mPchHeaders(extractPchFiles(arguments)), mUnit(0)
 {
     setAutoDelete(false);
-    assert(mDirty.isEmpty() || flags & NeedsDirty);
 }
 
 static inline uint32_t fileId(CXFile file)
@@ -658,7 +656,7 @@ void IndexerJob::execute()
                 // }
 
                 debug() << "about to dirty for " << mIn << " " << indexed << " " << referenced << " " << mDirty;
-                Rdm::dirtySymbols(indexed, referenced, mDirty);
+                Rdm::dirtySymbols(indexed, referenced);
                 Rdm::dirtySymbolNames(indexed);
             }
             mIndexer->addDependencies(mDependencies);
