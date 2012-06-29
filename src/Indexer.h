@@ -80,12 +80,15 @@ private:
 
 inline bool Indexer::visitFile(uint32_t fileId, const Path &path)
 {
-    if (!strcmp(path.fileName(), "b.cpp") && Location::path(fileId) == "foo.h")
-        return false;
     MutexLocker lock(&mVisitedFilesMutex);
     if (mVisitedFiles.contains(fileId)) {
+        if (testLog(VerboseDebug)) {
+            verboseDebug() << path << " lost " << Location::path(fileId);
+        }
+
         return false;
     }
+    verboseDebug() << path << " won " << Location::path(fileId);
     mVisitedFiles.insert(fileId);
     return true;
 }

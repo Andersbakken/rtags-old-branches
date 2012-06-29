@@ -193,18 +193,43 @@ int writeSymbols(SymbolMap &symbols, const ReferenceMap &references, uint32_t fi
             char buf[8];
             it->first.toKey(buf);
             const Slice key(buf, 8);
+            bool debug = it->first.path().endsWith("Image.h") && it->first.offset() == 2676;
             const CursorInfo added = it->second;
+            if (debug) {
+                error() << "foooooo " << Location::path(it->first.fileId())
+                        << " " << Location::path(fileId)
+                        << " added " << added.symbolName;
+            }
             if (it->first.fileId() != fileId) {
                 bool ok;
                 CursorInfo current = db->value<CursorInfo>(key, &ok);
+                if (debug) {
+                    error() << "foooooo ok " << ok;
+                }
+
                 if (ok) {
-                    if (current.unite(added))
+                    if (current.unite(added)) {
+                        if (debug) {
+                            error() << "foooooo united " << current.symbolName;
+                        }
+
                         totalWritten += batch.add(key, current);
+                    } else if (debug) {
+                        error() << "foooooo didnt unite " << current.symbolName;
+                    }
+
                     ++it;
                     continue;
                 }
             }
             totalWritten += batch.add(key, added);
+            if (debug) {
+                batch.debug = true;
+                batch.flush();
+
+                error() << "foooooo and we write " << added.symbolName;
+            }
+
             ++it;
         }
     }
@@ -262,15 +287,32 @@ int dirtySymbols(const Map<uint32_t, Set<uint32_t> > &dirty)
             const Location loc = Location::fromKey(key.data());
             if (loc.fileId() != i->first)
                 break;
+            bool debug = loc.path().endsWith("Image.h") && loc.offset() == 2676;
             CursorInfo cursorInfo = it->value<CursorInfo>();
             switch (cursorInfo.dirty(i->second, selfDirty)) {
             case CursorInfo::Unchanged:
+                if (debug)
+                    printf("[%s] %s:%d: if (debug)  [after]\n", __func__, __FILE__, __LINE__);
                 break;
             case CursorInfo::Modified:
+                if (debug) {
+                    printf("we're modified %s\n", cursorInfo.symbolName.nullTerminated());
+                }
                 db->setValue<CursorInfo>(key, cursorInfo);
                 ++ret;
                 break;
             case CursorInfo::Empty:
+                if (debug) {
+                    error() << "loc is " << loc << " i->first is " << i->first << " " << dirty;
+                    // for (Map<uint32_t, Set<uint32_t> >::const_iterator ii = dirty.begin(); ii != dirty.end(); ++ii) {
+                    //     printf("key: %s ", Location::path(ii->first).nullTerminated());
+                    //     for (Set<uint32_t>::const_iterator ittt = ii->second.begin(); ittt != ii->second.end(); ++ittt) {
+                    //         printf("%s ", Location::path(*ittt).nullTerminated());
+                    //     }
+                    //     printf("\n");
+                    // }
+                    printf("removing %s\n", cursorInfo.symbolName.nullTerminated());
+                }
                 db->remove(it->key());
                 ++ret;
                 break;

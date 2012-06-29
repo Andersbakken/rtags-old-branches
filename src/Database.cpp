@@ -195,7 +195,9 @@ Iterator *Database::createIterator() const
 
 Batch::Batch(Database *d)
     : mDB(d), mSize(0), mTotal(0)
-{}
+{
+    debug = false;
+}
 
 Batch::~Batch()
 {
@@ -206,11 +208,13 @@ int Batch::flush()
 {
     const int was = mSize;
     if (mSize) {
-        // error("About to write %d bytes to %p", batchSize, db);
+        if (debug)
+            error("About to write %d bytes", mSize);
         mDB->mDB->Write(mDB->mWriteOptions, &mBatch);
         mBatch.Clear();
         mTotal += mSize;
-        // error("Wrote %d (%d) to %p", batchSize, totalWritten, db);
+        if (debug)
+            error("Wrote %d (%d)", mSize, mTotal);
         mSize = 0;
     }
     return was;

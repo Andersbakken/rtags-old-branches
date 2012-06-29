@@ -161,6 +161,7 @@ private:
 };
 
 struct Batch {
+    bool debug;
     enum { BatchThreshold = 1024 * 1024 };
     Batch(Database *d);
     ~Batch();

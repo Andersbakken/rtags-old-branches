@@ -10,7 +10,7 @@ add_custom_target(3rdparty
     COMMAND cmake . && \$\(MAKE\)
     WORKING_DIRECTORY 3rdparty)
 
-add_custom_target(release
+add_custom_target(release 
     COMMAND cmake -DCMAKE_BUILD_TYPE=Release .
     WORKING_DIRECTORY .)
 

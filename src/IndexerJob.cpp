@@ -384,6 +384,10 @@ CXChildVisitResult IndexerJob::processCursor(const Cursor &cursor, const Cursor 
     }
 
     CursorInfo &info = mSymbols[cursor.location];
+    bool debug = cursor.location.path().endsWith("Image.h") && cursor.location.offset() == 2676;
+    if (debug) {
+        error() << "foooooooooooo" << info.symbolLength;
+    }
     if (!info.symbolLength) {
         if (mIsPch) {
             const ByteArray usr = Rdm::eatString(clang_getCursorUSR(cursor.cursor));
@@ -395,21 +399,33 @@ CXChildVisitResult IndexerJob::processCursor(const Cursor &cursor, const Cursor 
         info.kind = cursor.kind;
         const bool isReference = Rdm::isReference(info.kind);
 
+        if (debug) {
+            error() << "foooooooooooo" << info.isDefinition << " " << isReference;
+        }
+
         if (!isReference && !info.isDefinition) {
             CXSourceRange range = clang_getCursorExtent(cursor.cursor);
             unsigned end;
             clang_getSpellingLocation(clang_getRangeEnd(range), 0, 0, 0, &end);
             info.symbolLength = end - cursor.location.offset();
+            if (debug) {
+                error() << "fooooooo" << info.symbolLength;
+            }
         } else {
             CXStringScope name = clang_getCursorSpelling(cursor.cursor);
             const char *cstr = clang_getCString(name.string);
             info.symbolLength = cstr ? strlen(cstr) : 0;
+            if (debug) {
+                error() << "fooooooo2" << info.symbolLength;
+            }
+
         }
         if (!info.symbolLength) {
             mSymbols.remove(cursor.location);
             return CXChildVisit_Recurse;
         }
         info.symbolName = addNamePermutations(cursor.cursor, cursor.location, !isReference);
+
     } else if (info.kind == CXCursor_Constructor && cursor.kind == CXCursor_TypeRef) {
         return CXChildVisit_Recurse;
     }
@@ -522,9 +538,11 @@ void IndexerJob::execute()
         return;
     }
     CXIndex index = clang_createIndex(1, 0);
+    int parseTime = timer.elapsed();
     mUnit = clang_parseTranslationUnit(index, mIn.constData(),
                                        clangArgs.data(), idx, 0, 0,
                                        CXTranslationUnit_Incomplete | CXTranslationUnit_DetailedPreprocessingRecord);
+    parseTime = timer.elapsed() - parseTime;
     Scope scope = { mHeaderMap, mUnit, index };
     const time_t timeStamp = time(0);
     // fprintf(stdout, "%s => %d\n", clangLine.nullTerminated(), (mUnit != 0));
@@ -676,9 +694,9 @@ void IndexerJob::execute()
         Pch = 0x1,
         Dirty = 0x2
     };
-    const int w = snprintf(buf, sizeof(buf), "Visited %s (%s) in %sms. (%d syms, %d refs, %d deps, %d symNames)%s",
+    const int w = snprintf(buf, sizeof(buf), "Visited %s (%s) in %sms (%dms). (%d syms, %d refs, %d deps, %d symNames)%s",
                            mIn.constData(), compileError ? "error" : "success", ByteArray::number(timer.elapsed()).constData(),
-                           mSymbols.size(), mReferences.size(), mDependencies.size(), mSymbolNames.size(),
+                           parseTime, mSymbols.size(), mReferences.size(), mDependencies.size(), mSymbolNames.size(),
                            strings[(mPchHeaders.isEmpty() ? None : Pch) | (mFlags & NeedsDirty ? Dirty : None)]);
     mMessage = ByteArray(buf, w);
     if (testLog(Warning)) {
