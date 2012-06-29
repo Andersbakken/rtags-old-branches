@@ -41,12 +41,11 @@ private:
     WaitCondition mCond;
 
     struct FdData {
-        int fd;
         unsigned int flags;
         FdFunc callback;
         void* userData;
     };
-    std::vector<FdData> mFdData;
+    Map<int, FdData> mFdData;
 
     struct EventData {
         EventReceiver* receiver;

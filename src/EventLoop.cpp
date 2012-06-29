@@ -34,9 +34,12 @@ EventLoop* EventLoop::instance()
 
 void EventLoop::addFileDescriptor(int fd, unsigned int flags, FdFunc callback, void* userData)
 {
-    FdData data = { fd, flags, callback, userData };
     MutexLocker locker(&mMutex);
-    mFdData.push_back(data);
+    FdData &data = mFdData[fd];
+    data.flags = flags;
+    data.callback = callback;
+    data.userData = userData;
+
     locker.unlock();
 
     if (!pthread_equal(pthread_self(), mThread)) {
@@ -50,18 +53,9 @@ void EventLoop::addFileDescriptor(int fd, unsigned int flags, FdFunc callback, v
 
 void EventLoop::removeFileDescriptor(int fd)
 {
-    bool found = false;
     MutexLocker locker(&mMutex);
-    for (std::vector<FdData>::iterator it = mFdData.begin();
-         it != mFdData.end(); ++it) {
-        if (it->fd == fd) {
-            mFdData.erase(it);
-            found = true;
-            break;
-        }
-    }
 
-    if (found && !pthread_equal(pthread_self(), mThread)) {
+    if (mFdData.remove(fd) && !pthread_equal(pthread_self(), mThread)) {
         const char c = 'r';
         int r;
         do {
@@ -98,13 +92,13 @@ void EventLoop::run()
         max = mEventPipe[0];
         {
             MutexLocker locker(&mMutex);
-            for (std::vector<FdData>::const_iterator it = mFdData.begin();
+            for (Map<int, FdData>::const_iterator it = mFdData.begin();
                  it != mFdData.end(); ++it) {
-                if (it->flags & Read)
-                    FD_SET(it->fd, &rset);
-                if (it->flags & Write)
-                    FD_SET(it->fd, &wset);
-                max = std::max(max, it->fd);
+                if (it->second.flags & Read)
+                    FD_SET(it->first, &rset);
+                if (it->second.flags & Write)
+                    FD_SET(it->first, &wset);
+                max = std::max(max, it->first);
             }
         }
         int r;
@@ -115,20 +109,28 @@ void EventLoop::run()
         }
         if (FD_ISSET(mEventPipe[0], &rset))
             handlePipe();
-        std::vector<FdData> fds;
+        Map<int, FdData> fds;
         {
             MutexLocker locker(&mMutex);
             fds = mFdData;
         }
-        for (std::vector<FdData>::const_iterator it = fds.begin();
-             it != fds.end(); ++it) {
-            if ((it->flags & Read) && FD_ISSET(it->fd, &rset)) {
+
+        Map<int, FdData>::const_iterator it = fds.begin();
+        while (it != fds.end()) {
+            if ((it->second.flags & Read) && FD_ISSET(it->first, &rset)) {
                 unsigned int flag = Read;
-                if ((it->flags & Write) && FD_ISSET(it->fd, &wset))
+                if ((it->second.flags & Write) && FD_ISSET(it->first, &wset))
                     flag |= Write;
-                it->callback(it->fd, flag, it->userData);
-            } else if ((it->flags & Write) && FD_ISSET(it->fd, &wset))
-                it->callback(it->fd, Write, it->userData);
+                it->second.callback(it->first, flag, it->second.userData);
+            } else if ((it->second.flags & Write) && FD_ISSET(it->first, &wset)) {
+                it->second.callback(it->first, Write, it->second.userData);
+            } else {
+                continue;
+            }
+            MutexLocker lock(&mMutex);
+            do {
+                ++it;
+            } while (it != fds.end() && !mFdData.contains(it->first));
         }
         if (mQuit)
             break;
