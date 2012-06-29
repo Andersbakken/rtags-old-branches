@@ -628,30 +628,38 @@ void IndexerJob::execute()
         scope.cleanup();
 
         if (!isAborted()) {
-            Set<uint32_t> fileIds;
-            Set<uint32_t> dirtyAndIndexed;
+            Set<uint32_t> referenced;
+            Set<uint32_t> indexed;
             for (Map<uint32_t, PathState>::const_iterator it = mPaths.begin(); it != mPaths.end(); ++it) {
-                if (it->second == Index) {
+                switch (it->second) {
+                case Reference:
+                    if (mFlags & NeedsDirty)
+                        referenced.insert(it->first);
+                    break;
+                case Index:
                     visited[it->first] = List<ByteArray>();
-                    if (mFlags & NeedsDirty) {
-                        fileIds.insert(it->first);
-                        if (mDirty.contains(it->first))
-                            dirtyAndIndexed.insert(it->first);
-                    }
+                    if (mFlags & NeedsDirty)
+                        indexed.insert(it->first);
+                    break;
+                case DontIndex:
+                    break;
+                case Unset:
+                    assert(0);
+                    break;
                 }
             }
             if (mFlags & NeedsDirty) {
-                Map<uint32_t, Set<uint32_t> > dirty = mIndexer->dependencies(fileIds);
+                // Map<uint32_t, Set<uint32_t> > dirty = mIndexer->dependencies(fileIds, dirtyAndIndexed);
                 // Log log(Error);
                 // log << "About to dirty for " << mIn;
-                for (Map<uint32_t, Set<uint32_t> >::iterator it = dirty.begin(); it != dirty.end(); ++it) {
-                    // log << " " << Location::path(it->first);
-                    it->second.unite(dirtyAndIndexed);
-                }
+                // for (Map<uint32_t, Set<uint32_t> >::iterator it = dirty.begin(); it != dirty.end(); ++it) {
+                //     // log << " " << Location::path(it->first);
+                //     it->second.unite(dirtyAndIndexed);
+                // }
 
-                debug() << "about to dirty for " << mIn << " " << dirty << mPaths;
-                Rdm::dirtySymbols(dirty);
-                Rdm::dirtySymbolNames(dirtyAndIndexed);
+                debug() << "about to dirty for " << mIn << " " << indexed << " " << referenced << " " << mDirty;
+                Rdm::dirtySymbols(indexed, referenced, mDirty);
+                Rdm::dirtySymbolNames(indexed);
             }
             mIndexer->addDependencies(mDependencies);
             assert(mDependencies[mFileId].contains(mFileId));

@@ -6,6 +6,7 @@
 #include "MemoryMonitor.h"
 #include "Timer.h"
 #include <List.h>
+#include "Indexer.h"
 
 namespace Rdm {
 ByteArray eatString(CXString str)
@@ -245,39 +246,40 @@ int dirtySymbolNames(const Set<uint32_t> &dirty)
     return ret;
 }
 
-int dirtySymbols(const Map<uint32_t, Set<uint32_t> > &dirty)
+int dirtySymbols(const Set<uint32_t> &indexed, const Set<uint32_t> &referenced, const Set<uint32_t> &dirty)
 {
     int ret = 0;
     ScopedDB db = Server::instance()->db(Server::Symbol, ScopedDB::Write);
     RTags::Ptr<Iterator> it(db->createIterator());
     char key[8];
-    for (Map<uint32_t, Set<uint32_t> >::const_iterator i = dirty.begin(); i != dirty.end(); ++i) {
-        const Location loc(i->first, 0);
-        loc.toKey(key);
-        const bool selfDirty = i->second.contains(i->first);
-        it->seek(Slice(key, sizeof(key)));
-        while (it->isValid()) {
-            const Slice key = it->key();
-            assert(key.size() == 8);
-            const Location loc = Location::fromKey(key.data());
-            if (loc.fileId() != i->first)
-                break;
-            CursorInfo cursorInfo = it->value<CursorInfo>();
-            switch (cursorInfo.dirty(i->second, selfDirty)) {
-            case CursorInfo::Unchanged:
-                break;
-            case CursorInfo::Modified:
-                db->setValue<CursorInfo>(key, cursorInfo);
-                ++ret;
-                break;
-            case CursorInfo::Empty:
-                db->remove(it->key());
-                ++ret;
-                break;
-            }
-            it->next();
-        }
-    }
+    const DependencyMap deps = Server::instance()->indexer()->dependencies();
+    // for (Map<uint32_t, Set<uint32_t> >::const_iterator i = dirty.begin(); i != dirty.end(); ++i) {
+    //     const Location loc(i->first, 0);
+    //     loc.toKey(key);
+    //     const bool selfDirty = i->second.contains(i->first);
+    //     it->seek(Slice(key, sizeof(key)));
+    //     while (it->isValid()) {
+    //         const Slice key = it->key();
+    //         assert(key.size() == 8);
+    //         const Location loc = Location::fromKey(key.data());
+    //         if (loc.fileId() != i->first)
+    //             break;
+    //         CursorInfo cursorInfo = it->value<CursorInfo>();
+    //         switch (cursorInfo.dirty(i->second, selfDirty)) {
+    //         case CursorInfo::Unchanged:
+    //             break;
+    //         case CursorInfo::Modified:
+    //             db->setValue<CursorInfo>(key, cursorInfo);
+    //             ++ret;
+    //             break;
+    //         case CursorInfo::Empty:
+    //             db->remove(it->key());
+    //             ++ret;
+    //             break;
+    //         }
+    //         it->next();
+    //     }
+    // }
     return ret;
 }
 
