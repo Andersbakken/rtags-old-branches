@@ -655,16 +655,19 @@ void IndexerJob::execute()
                 //     it->second.unite(dirtyAndIndexed);
                 // }
 
-                debug() << "about to dirty for " << mIn << " " << indexed << " " << referenced << " " << mDirty;
-                Rdm::dirtySymbols(indexed, referenced);
-                Rdm::dirtySymbolNames(indexed);
+                debug() << "about to dirty for " << mIn << " " << indexed << " " << referenced;
+                // Rdm::dirtySymbols(indexed, referenced);
+                // Rdm::dirtySymbolNames(indexed);
+                // Rdm::writeSymbols(mSymbols, mReferences, mFileId, indexed, referenced);
+                Rdm::writeSymbolNames(mSymbolNames, indexed);
+            } else {
+                Rdm::writeSymbols(mSymbols, mReferences, mFileId);
+                Rdm::writeSymbolNames(mSymbolNames);
             }
             mIndexer->addDependencies(mDependencies);
             assert(mDependencies[mFileId].contains(mFileId));
 
             mIndexer->setDiagnostics(visited, fixIts);
-            Rdm::writeSymbols(mSymbols, mReferences, mFileId);
-            Rdm::writeSymbolNames(mSymbolNames);
             Rdm::writeFileInformation(mFileId, mArgs, timeStamp);
             if (mIsPch)
                 mIndexer->setPchDependencies(mIn, mPchDependencies);

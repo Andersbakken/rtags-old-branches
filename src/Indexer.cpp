@@ -161,11 +161,11 @@ void Indexer::initDB(InitMode mode, const ByteArray &pattern)
     }
 
     for (Map<Path, List<ByteArray> >::const_iterator it = toIndexPch.begin(); it != toIndexPch.end(); ++it) {
-        index(it->first, it->second, IndexerJob::DirtyPch|IndexerJob::NeedsDirty, dirtyFiles);
+        index(it->first, it->second, IndexerJob::DirtyPch|IndexerJob::NeedsDirty);
     }
 
     for (Map<Path, List<ByteArray> >::const_iterator it = toIndex.begin(); it != toIndex.end(); ++it) {
-        index(it->first, it->second, IndexerJob::Dirty|IndexerJob::NeedsDirty, dirtyFiles);
+        index(it->first, it->second, IndexerJob::Dirty|IndexerJob::NeedsDirty);
     }
 }
 
@@ -272,15 +272,14 @@ void Indexer::onJobFinished(IndexerJob *job)
 }
 
 
-int Indexer::index(const Path &input, const List<ByteArray> &arguments,
-                   unsigned indexerJobFlags, const Set<uint32_t> &dirty)
+int Indexer::index(const Path &input, const List<ByteArray> &arguments, unsigned indexerJobFlags)
 {
     MutexLocker locker(&mMutex);
 
     const uint32_t fileId = Location::insertFile(input);
 
     const int id = ++mJobCounter;
-    IndexerJob *job = new IndexerJob(this, id, indexerJobFlags, input, arguments, dirty);
+    IndexerJob *job = new IndexerJob(this, id, indexerJobFlags, input, arguments);
 
     if (needsToWaitForPch(job)) {
         mWaitingForPCH[id] = job;
@@ -394,11 +393,11 @@ void Indexer::onDirectoryChanged(const Path &p)
     }
 
     for (Map<Path, List<ByteArray> >::const_iterator it = toIndexPch.begin(); it != toIndexPch.end(); ++it) {
-        index(it->first, it->second, IndexerJob::DirtyPch|IndexerJob::NeedsDirty, dirtyFiles);
+        index(it->first, it->second, IndexerJob::DirtyPch|IndexerJob::NeedsDirty);
     }
 
     for (Map<Path, List<ByteArray> >::const_iterator it = toIndex.begin(); it != toIndex.end(); ++it) {
-        index(it->first, it->second, IndexerJob::Dirty|IndexerJob::NeedsDirty, dirtyFiles);
+        index(it->first, it->second, IndexerJob::Dirty|IndexerJob::NeedsDirty);
     }
 }
 

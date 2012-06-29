@@ -7,6 +7,7 @@
 #include "Timer.h"
 #include <List.h>
 #include "Indexer.h"
+#include <IndexerJob.h>
 
 namespace Rdm {
 ByteArray eatString(CXString str)
@@ -84,32 +85,6 @@ CursorInfo findCursorInfo(Database *db, const Location &location, Location *loc)
     return cursorInfo;
 }
 
-int writeSymbolNames(SymbolNameMap &symbolNames)
-{
-    Timer timer;
-    ScopedDB db = Server::instance()->db(Server::SymbolName, ScopedDB::Write);
-
-    Batch batch(db);
-    int totalWritten = 0;
-
-    SymbolNameMap::iterator it = symbolNames.begin();
-    const SymbolNameMap::const_iterator end = symbolNames.end();
-    while (it != end) {
-        const char *key = it->first.constData();
-        const Set<Location> added = it->second;
-        bool ok;
-        Set<Location> current = db->value<Set<Location> >(key, &ok);
-        if (!ok) {
-            totalWritten += batch.add(key, added);
-        } else if (addTo(current, added)) {
-            totalWritten += batch.add(key, current);
-        }
-        ++it;
-    }
-
-    return totalWritten;
-}
-
 int writeDependencies(const DependencyMap &dependencies)
 {
     Timer timer;
@@ -164,6 +139,197 @@ int writePchUSRMaps(const Map<Path, PchUSRMap> &pchUSRMaps)
     }
     return totalWritten;
 }
+
+static inline bool adjust(Set<Location> &locations, const Set<uint32_t> &out, const Set<Location> &in)
+{
+    const int size = locations.size();
+    Set<Location>::iterator it = locations.begin();
+    while (it != locations.end()) {
+        if (out.contains(it->fileId()) && !in.contains(*it)) {
+            locations.erase(it++);
+        } else {
+            ++it;
+        }
+    }
+    locations.unite(in);
+    return locations.size() != size;
+}
+
+static inline bool adjust(Set<Location> &locations, const Set<uint32_t> &out)
+{
+    const int size = locations.size();
+    Set<Location>::iterator it = locations.begin();
+    while (it != locations.end()) {
+        if (out.contains(it->fileId())) {
+            locations.erase(it++);
+        } else {
+            ++it;
+        }
+    }
+    return locations.size() != size;
+}
+
+
+int writeSymbolNames(const SymbolNameMap &symbolNames, const Set<uint32_t> &indexed)
+{
+    if (indexed.isEmpty())
+        return writeSymbolNames(symbolNames);
+    Timer timer;
+    ScopedDB db = Server::instance()->db(Server::SymbolName, ScopedDB::Write);
+
+    Batch batch(db);
+    int totalWritten = 0;
+    RTags::Ptr<Iterator> it(db->createIterator());
+    it->seekToFirst();
+    while (it->isValid()) {
+        Set<Location> locations = it->value<Set<Location> >();
+        const ByteArray key = it->key().byteArray();
+        const SymbolNameMap::const_iterator i = symbolNames.find(key);
+        bool changed;
+        if (i != symbolNames.end()) {
+            changed = adjust(locations, indexed, i->second);
+        } else {
+            changed = adjust(locations, indexed);
+        }
+
+        if (changed) {
+            totalWritten += batch.add(key, locations);
+        }
+        it->next();
+    }
+
+    return totalWritten;
+}
+
+
+int writeSymbolNames(const SymbolNameMap &symbolNames)
+{
+    Timer timer;
+    ScopedDB db = Server::instance()->db(Server::SymbolName, ScopedDB::Write);
+
+    Batch batch(db);
+    int totalWritten = 0;
+
+    SymbolNameMap::const_iterator it = symbolNames.begin();
+    const SymbolNameMap::const_iterator end = symbolNames.end();
+    while (it != end) {
+        const char *key = it->first.constData();
+        const Set<Location> added = it->second;
+        bool ok;
+        Set<Location> current = db->value<Set<Location> >(key, &ok);
+        if (!ok) {
+            totalWritten += batch.add(key, added);
+        } else if (addTo(current, added)) {
+            totalWritten += batch.add(key, current);
+        }
+        ++it;
+    }
+
+    return totalWritten;
+}
+
+enum DirtyState {
+    Empty = -1,
+    Unchanged = 0,
+    Modified = 1
+};
+
+static inline DirtyState dirty(CursorInfo &cursorInfo, const Set<uint32_t> &dirty, bool selfDirty,
+                               const Map<Location, ReferenceType> &newReferences)
+{
+    bool changed = false;
+    if (selfDirty && cursorInfo.symbolLength) {
+        cursorInfo.symbolLength = 0;
+        cursorInfo.kind = CXCursor_FirstInvalid;
+        cursorInfo.isDefinition = false;
+        cursorInfo.symbolName.clear();
+        cursorInfo.target.clear();
+        changed = true;
+    } else {
+        const uint32_t targetFileId = cursorInfo.target.fileId();
+        if (targetFileId && dirty.contains(targetFileId)) {
+            changed = true;
+            cursorInfo.target.clear();
+        }
+    }
+
+    const int size = cursorInfo.references.size();
+    Set<Location>::iterator it = cursorInfo.references.begin();
+    while (it != cursorInfo.references.end()) {
+        if (dirty.contains(it->fileId()) && !newReferences.contains(*it)) {
+            changed = true;
+            cursorInfo.references.erase(it++);
+        } else {
+            ++it;
+        }
+    }
+    // if (newReferences.size()) {
+    //     for (Map<Location, std::pair<Location, ReferenceType>::const_iterator it = newReferences.begin();
+    //          it != newReferences.end(); ++it) {
+    //     }
+
+    //     cursorInfo.references.unite(newReferences);
+    //     if (size != cursorInfo.references.size())
+    //         changed = true;
+    // }
+
+    return changed ? (cursorInfo.isEmpty() ? Empty : Modified) : Unchanged;
+}
+
+int writeSymbols(const SymbolMap &symbols, const ReferenceMap &references, uint32_t fileId,
+                 const Set<uint32_t> &indexed, const Set<uint32_t> &referenced)
+{
+    Timer timer;
+    ScopedDB db = Server::instance()->db(Server::Symbol, ScopedDB::Write);
+    Batch batch(db);
+    int totalWritten = 0;
+    RTags::Ptr<Iterator> it(db->createIterator());
+    char key[8];
+    for (Set<uint32_t>::const_iterator i = referenced.begin(); i != referenced.end(); ++i) {
+        const Location loc(*i, 0);
+        loc.toKey(key);
+        it->seek(Slice(key, sizeof(key)));
+        while (it->isValid()) {
+            const Slice key = it->key();
+            assert(key.size() == 8);
+            const Location loc = Location::fromKey(key.data());
+            if (loc.fileId() != *i)
+                break;
+            CursorInfo cursorInfo = it->value<CursorInfo>();
+            const SymbolMap::const_iterator s = symbols.find(loc);
+            const ReferenceMap::const_iterator r = references.find(loc);
+            if (s == symbols.end()) {
+            //     switch (dirty(cursorInfo, indexed, true, r->second)) {
+            //     case CursorInfo::Unchanged:
+            //         break;
+            //     case CursorInfo::Modified:
+            //         batch.setValue<CursorInfo>(key, cursorInfo);
+            //         ++ret;
+            //         break;
+            //     case CursorInfo::Empty:
+            //         batch.remove(key);
+            //         ++ret;
+            //         break;
+            //     }
+            } else {
+                // CursorInfo newCursorInfo = s->second;
+                // if (r != references.end())
+                //     // newCursorInfo.references.unite(r->second); ###
+                // for (Set<Location>::const_iterator rit = cursorInfo.references.begin(); rit != cursorInfo.references.end(); ++rit) {
+                //     if (!indexed.contains(rit->fileId()))
+                //         references.insert(*rit);
+                // }
+                // if (newCursorInfo != cursorInfo) {
+                //     batch.setValue<CursorInfo>(key, newCursorInfo);
+                //     ++ret;
+                // }
+            }
+            it->next();
+        }
+    }
+    return totalWritten;
+}
+
 
 int writeSymbols(SymbolMap &symbols, const ReferenceMap &references, uint32_t fileId)
 {
@@ -246,13 +412,17 @@ int dirtySymbolNames(const Set<uint32_t> &dirty)
     return ret;
 }
 
-int dirtySymbols(const Set<uint32_t> &indexed, const Set<uint32_t> &referenced, const Set<uint32_t> &dirty)
+int dirtySymbols(const Set<uint32_t> &indexed, const Set<uint32_t> &referenced)
 {
     int ret = 0;
     ScopedDB db = Server::instance()->db(Server::Symbol, ScopedDB::Write);
     RTags::Ptr<Iterator> it(db->createIterator());
     char key[8];
     const DependencyMap deps = Server::instance()->indexer()->dependencies();
+    for (Set<uint32_t>::const_iterator it = indexed.begin(); it != indexed.end(); ++it) {
+
+    }
+
     // for (Map<uint32_t, Set<uint32_t> >::const_iterator i = dirty.begin(); i != dirty.end(); ++i) {
     //     const Location loc(i->first, 0);
     //     loc.toKey(key);

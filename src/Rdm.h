@@ -171,18 +171,17 @@ static inline bool addTo(Container &container, const Value &value)
 }
 
 CursorInfo findCursorInfo(Database *db, const Location &key, Location *loc = 0);
-int writeSymbolNames(SymbolNameMap &symbolNames);
 int writeDependencies(const DependencyMap &dependencies);
 int writePchDepencies(const Map<Path, Set<uint32_t> > &pchDependencies);
 int writeFileInformation(uint32_t fileId, const List<ByteArray> &args, time_t lastTouched);
 int writePchUSRMaps(const Map<Path, PchUSRMap> &maps);
+int writeSymbolNames(const SymbolNameMap &symbolNames, const Set<uint32_t> &indexed);
+int writeSymbolNames(const SymbolNameMap &symbolNames);
+int writeSymbols(const SymbolMap &symbols, const ReferenceMap &references,
+                 const Set<uint32_t> &indexed, const Set<uint32_t> &referenced);
 int writeSymbols(SymbolMap &symbols, const ReferenceMap &references, uint32_t fileId);
-int dirtySymbols(const Set<uint32_t> &indexed, const Set<uint32_t> &referenced, const Set<uint32_t> &dirty);
-int dirtySymbolNames(const Set<uint32_t> &dirty);
 
 List<ByteArray> compileArgs(uint32_t fileId);
-// the symbols will be modified before writing and we don't want to detach so we
-// work on a non-const reference
 }
 
 static inline std::ostringstream &operator<<(std::ostringstream &dbg, CXCursor cursor)

@@ -24,38 +24,24 @@ public:
         symbolName.clear();
     }
 
-    enum DirtyState {
-        Empty = -1,
-        Unchanged = 0,
-        Modified = 1
-    };
-    DirtyState dirty(const Set<uint32_t> &dirty, bool selfDirty)
+    bool operator==(const CursorInfo &other) const
     {
-        bool changed = false;
-        if (selfDirty && symbolLength) {
-            symbolLength = 0;
-            kind = CXCursor_FirstInvalid;
-            isDefinition = false;
-            symbolName.clear();
-            changed = true;
-        }
+        return (symbolLength == other.symbolLength
+                || kind == other.kind
+                || isDefinition == other.isDefinition
+                || symbolName == other.symbolName
+                || target == other.target
+                || references == other.references);
+    }
 
-        const uint32_t targetFileId = target.fileId();
-        if (targetFileId && dirty.contains(targetFileId)) {
-            changed = true;
-            target.clear();
-        }
-
-        Set<Location>::iterator it = references.begin();
-        while (it != references.end()) {
-            if (dirty.contains(it->fileId())) {
-                changed = true;
-                references.erase(it++);
-            } else {
-                ++it;
-            }
-        }
-        return changed ? (isEmpty() ? Empty : Modified) : Unchanged;
+    bool operator!=(const CursorInfo &other) const
+    {
+        return (symbolLength != other.symbolLength
+                || kind != other.kind
+                || isDefinition != other.isDefinition
+                || symbolName != other.symbolName
+                || target != other.target
+                || references != other.references);
     }
 
     bool isEmpty() const
