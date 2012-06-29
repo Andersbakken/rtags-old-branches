@@ -629,19 +629,15 @@ void IndexerJob::execute()
 
         if (!isAborted()) {
             Set<uint32_t> fileIds;
-            Set<uint32_t> dirtySymbolNames;
+            Set<uint32_t> dirtyAndIndexed;
             for (Map<uint32_t, PathState>::const_iterator it = mPaths.begin(); it != mPaths.end(); ++it) {
                 if (it->second == Index) {
                     visited[it->first] = List<ByteArray>();
                     if (mFlags & NeedsDirty) {
                         fileIds.insert(it->first);
                         if (mDirty.contains(it->first))
-                            dirtySymbolNames.insert(it->first);
+                            dirtyAndIndexed.insert(it->first);
                     }
-                } else if (mFlags & NeedsDirty && it->second == Reference) {
-                    fileIds.insert(it->first);
-                    if (mDirty.contains(it->first))
-                        dirtySymbolNames.insert(it->first);
                 }
             }
             if (mFlags & NeedsDirty) {
@@ -650,12 +646,12 @@ void IndexerJob::execute()
                 // log << "About to dirty for " << mIn;
                 for (Map<uint32_t, Set<uint32_t> >::iterator it = dirty.begin(); it != dirty.end(); ++it) {
                     // log << " " << Location::path(it->first);
-                    it->second.unite(mDirty);
+                    it->second.unite(dirtyAndIndexed);
                 }
 
                 debug() << "about to dirty for " << mIn << " " << dirty << mPaths;
                 Rdm::dirtySymbols(dirty);
-                Rdm::dirtySymbolNames(dirtySymbolNames);
+                Rdm::dirtySymbolNames(dirtyAndIndexed);
             }
             mIndexer->addDependencies(mDependencies);
             assert(mDependencies[mFileId].contains(mFileId));
