@@ -24,7 +24,7 @@ public:
 
     void append(const T &t)
     {
-        push_back(t);
+        std::vector<T>::push_back(t);
     }
 
     void append(const List<T> &t)

@@ -2,6 +2,10 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <fcntl.h>
+#ifdef OS_Darwin
+#include <mach-o/dyld.h>
+#endif
+
 
 namespace RTags {
 
@@ -217,11 +221,11 @@ void findApplicationDirPath(const char *argv0)
         sApplicationDirPath = p;
         return;
     }
-#elif defined(OS_Mac)
-    char path[PATH_MAX];
-    uint32_t size = sizeof(path);
-    if (_NSGetExecutablePath(path, &size) == 0) {
-        Path p(path, size);
+#elif defined(OS_Darwin)
+    char buf[PATH_MAX];
+    uint32_t size = sizeof(buf);
+    if (_NSGetExecutablePath(buf, &size) == 0) {
+        Path p(buf, size);
         if (p.resolve()) {
             sApplicationDirPath = p;
             return;

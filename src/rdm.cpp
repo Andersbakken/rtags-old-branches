@@ -14,7 +14,7 @@
 #include <execinfo.h>
 #include <cxxabi.h>
 #endif
-#ifdef OS_Mac
+#ifdef OS_Darwin
 #include <mach-o/dyld.h>
 #endif
 

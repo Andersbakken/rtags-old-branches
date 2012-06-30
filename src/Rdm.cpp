@@ -1,292 +1,234 @@
-#include "Rdm.h"
-#include "Database.h"
-#include "CursorInfo.h"
-#include "ScopedDB.h"
+#include "Thread.h"
+#include "ThreadPool.h"
 #include "Server.h"
-#include "MemoryMonitor.h"
-#include "Timer.h"
-#include <List.h>
+#include <getopt.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <Log.h>
+#include <RTags.h>
+#include "Rdm.h"
+#include "Thread.h"
+#include "EventLoop.h"
+#include <signal.h>
+#ifdef OS_Linux
+#include <execinfo.h>
+#include <cxxabi.h>
+#endif
+#ifdef OS_Darwin
+#include <mach-o/dyld.h>
+#endif
 
-namespace Rdm {
-ByteArray eatString(CXString str)
+void signalHandler(int signal)
 {
-    const ByteArray ret(clang_getCString(str));
-    clang_disposeString(str);
-    return ret;
-}
-
-ByteArray cursorToString(CXCursor cursor)
-{
-    ByteArray ret = eatString(clang_getCursorKindSpelling(clang_getCursorKind(cursor)));
-    const ByteArray name = eatString(clang_getCursorDisplayName(cursor));
-    if (!name.isEmpty())
-        ret += " " + name;
-
-    CXFile file;
-    unsigned off, line, col;
-    CXSourceLocation loc = clang_getCursorLocation(cursor);
-    clang_getSpellingLocation(loc, &file, &line, &col, &off);
-    const ByteArray fileName = eatString(clang_getFileName(file));
-    if (!fileName.isEmpty()) {
-        ret += " " + fileName + ':' + ByteArray::number(line) + ":" + ByteArray::number(col) + ": (" + ByteArray::number(off) + ")"; // + eatString(clang_getCursorUSR(cursor));
-    }
-    return ret;
-}
-
-CursorInfo findCursorInfo(Database *db, const Location &location, Location *loc)
-{
-    RTags::Ptr<Iterator> it(db->createIterator());
-    char needleBuf[8];
-    location.toKey(needleBuf);
-    const Slice needle(needleBuf, 8);
-    it->seek(needle);
-    bool found = false;
-    CursorInfo cursorInfo;
-    if (it->isValid()) {
-        const Slice key = it->key();
-        found = (key == needle);
-        if (!found)
-            it->previous();
-    } else {
-        it->seekToLast();
-    }
-    if (!found && it->isValid()) {
-        const Slice key = it->key();
-        const Location loc = Location::fromKey(key.data());
-        if (location.fileId() == loc.fileId()) {
-            const int off = location.offset() - loc.offset();
-            cursorInfo = it->value<CursorInfo>();
-            if (cursorInfo.symbolLength > off) {
-                found = true;
-            } else {
-                debug("offsets wrong symbolLength %d offset %d %d/%d", cursorInfo.symbolLength,
-                      off, location.offset(), loc.offset());
-            }
-        } else {
-            debug() << "wrong path" << location.path() << loc.path() << key;
-        }
-    }
-    if (found) {
-        if (!cursorInfo.symbolLength) {
-            cursorInfo = it->value<CursorInfo>();
-        }
-        if (loc) {
-            *loc = Location::fromKey(it->key().data());
-        }
-    }
-    if (!found) {
-        // printf("[%s] %s:%d: if (!found) {\n", __func__, __FILE__, __LINE__);
-        cursorInfo.clear();
-    }
-    // error() << "found" << found << location << cursorInfo.target << cursorInfo.references << cursorInfo.symbolLength
-    //         << cursorInfo.symbolName;
-    return cursorInfo;
-}
-
-int writeSymbolNames(SymbolNameMap &symbolNames)
-{
-    Timer timer;
-    ScopedDB db = Server::instance()->db(Server::SymbolName, ScopedDB::Write);
-
-    Batch batch(db);
-    int totalWritten = 0;
-
-    SymbolNameMap::iterator it = symbolNames.begin();
-    const SymbolNameMap::const_iterator end = symbolNames.end();
-    while (it != end) {
-        const char *key = it->first.constData();
-        const Set<Location> added = it->second;
-        bool ok;
-        Set<Location> current = db->value<Set<Location> >(key, &ok);
-        if (!ok) {
-            totalWritten += batch.add(key, added);
-        } else if (addTo(current, added)) {
-            totalWritten += batch.add(key, current);
-        }
-        ++it;
-    }
-
-    return totalWritten;
-}
-
-int writeDependencies(const DependencyMap &dependencies)
-{
-    Timer timer;
-    ScopedDB db = Server::instance()->db(Server::Dependency, ScopedDB::Write);
-
-    Batch batch(db);
-    int totalWritten = 0;
-    DependencyMap::const_iterator it = dependencies.begin();
-    const DependencyMap::const_iterator end = dependencies.end();
-    char buf[4];
-    const Slice key(buf, 4);
-    while (it != end) {
-        memcpy(buf, &it->first, sizeof(buf));
-        Set<uint32_t> added = it->second;
-        Set<uint32_t> current = db->value<Set<uint32_t> >(key);
-        const int oldSize = current.size();
-        if (current.unite(added).size() > oldSize) {
-            totalWritten += batch.add(key, current);
-        }
-        ++it;
-    }
-    return totalWritten;
-}
-int writePchDepencies(const Map<Path, Set<uint32_t> > &pchDependencies)
-{
-    Timer timer;
-    ScopedDB db = Server::instance()->db(Server::General, ScopedDB::Write);
-    if (!pchDependencies.isEmpty())
-        return db->setValue("pchDependencies", pchDependencies);
-    return 0;
-}
-int writeFileInformation(uint32_t fileId, const List<ByteArray> &args, time_t lastTouched)
-{
-    Timer timer;
-    ScopedDB db = Server::instance()->db(Server::FileInformation, ScopedDB::Write);
-    if (Location::path(fileId).isHeader() && !isPch(args)) {
-        error() << "Somehow we're writing fileInformation for a header that isn't pch"
-                << Location::path(fileId) << args << lastTouched;
-    }
-    const char *ch = reinterpret_cast<const char*>(&fileId);
-    return db->setValue(Slice(ch, sizeof(fileId)), FileInformation(lastTouched, args));
-}
-
-int writePchUSRMaps(const Map<Path, PchUSRMap> &pchUSRMaps)
-{
-    Timer timer;
-    ScopedDB db = Server::instance()->db(Server::PCHUsrMaps, ScopedDB::Write);
-    int totalWritten = 0;
-    Batch batch(db);
-    for (Map<Path, PchUSRMap>::const_iterator it = pchUSRMaps.begin(); it != pchUSRMaps.end(); ++it) {
-        totalWritten += batch.add(it->first, it->second);
-    }
-    return totalWritten;
-}
-
-int writeSymbols(SymbolMap &symbols, const ReferenceMap &references, uint32_t fileId)
-{
-    Timer timer;
-    ScopedDB db = Server::instance()->db(Server::Symbol, ScopedDB::Write);
-    Batch batch(db);
-    int totalWritten = 0;
-
-    if (!references.isEmpty()) {
-        const ReferenceMap::const_iterator end = references.end();
-        for (ReferenceMap::const_iterator it = references.begin(); it != end; ++it) {
-            CursorInfo &ci = symbols[it->second.first];
-            ci.references.insert(it->first);
-            if (it->second.second != Rdm::NormalReference) {
-                CursorInfo &other = symbols[it->first];
-                // error() << "trying to join" << it->first << "and" << it->second.front();
-                if (other.target.isNull())
-                    other.target = it->second.first;
-                if (ci.target.isNull())
-                    ci.target = it->first;
-            }
-        }
-    }
-    if (!symbols.isEmpty()) {
-        SymbolMap::iterator it = symbols.begin();
-        const SymbolMap::const_iterator end = symbols.end();
-        while (it != end) {
-            char buf[8];
-            it->first.toKey(buf);
-            const Slice key(buf, 8);
-            const CursorInfo added = it->second;
-            if (it->first.fileId() != fileId) {
-                bool ok;
-                CursorInfo current = db->value<CursorInfo>(key, &ok);
-                if (ok) {
-                    if (current.unite(added))
-                        totalWritten += batch.add(key, current);
-                    ++it;
-                    continue;
+    fprintf(stderr, "Caught signal %d\n", signal);
+#ifdef OS_Linux
+    enum { StackSize = 50 };
+    void *callstack[StackSize];
+    const int c = backtrace(callstack, StackSize);
+    char **symbols = backtrace_symbols(callstack, c);
+    for (int i=0; i<c; ++i) {
+        const char *frame = symbols[i];
+        int from = -1;
+        int to = -1;
+        for (int j=0; frame[j]; ++j) {
+            switch (frame[j]) {
+            case '(':
+                assert(from = -1);
+                from = j;
+                break;
+            case '+':
+                if (from != -1) {
+                    to = j;
+                    break;
                 }
+                break;
             }
-            totalWritten += batch.add(key, added);
-            ++it;
+        }
+        if (from != -1 && to != -1) {
+            char buf[1024];
+            size_t len = sizeof(buf);
+            assert(to - from < (int)len);
+            memcpy(buf, frame + from + 1, to - from - 1);
+            buf[to - from - 1] = '\0';
+            int status;
+            abi::__cxa_demangle(buf, buf, &len, &status);
+            if (!status) {
+                fprintf(stderr, "  %d/%d %s [%p]\n", i + 1, c, buf, callstack[i]);
+                continue;
+            }
+        }
+        fprintf(stderr, "  %d/%d %s\n", i + 1, c, frame);
+    }
+    free(symbols);
+#endif
+    fflush(stderr);
+    Server::instance()->clear();
+    exit(1);
+}
+
+void usage(FILE *f)
+{
+    fprintf(f,
+            "rdm [...options...]\n"
+            "  --help|-h                  Display this page\n"
+            "  --include-path|-I [arg]    Add additional include path to clang\n"
+            "  --include|-i [arg]         Add additional include directive to clang\n"
+            "  --define|-D [arg]          Add additional define directive to clang\n"
+            "  --log-file|-L [arg]        Log to this file\n"
+            "  --append|-A                Append to log file\n"
+            "  --verbose|-v               Change verbosity, multiple -v's are allowed\n"
+            "  --clean-slate|-C           Start from a clean slate\n"
+            "  --datadir|-d [arg]         Use this as datadir (default ~/.rtags\n"
+            "  --disable-sighandler|-s    Disable signal handler to dump stack for crashes\n"
+            "  --cache-size|-c [size]     Cache size in MB (one cache per db, default 128MB)\n"
+            "  --name|-n [name]           Name to use for server (default ~/.rtags/server)\n"
+            "  --no-clang-includepath|-p  Don't use clang include paths by default\n"
+            "  --usedashB|-B              Use -B for make instead of makelib\n"
+            "  --silent|-S                No logging to stdout\n"
+            "  --thread-count|-j [arg]    Spawn this many threads for thread pool\n");
+}
+
+int main(int argc, char** argv)
+{
+    RTags::findApplicationDirPath(*argv);
+    struct option opts[] = {
+        { "help", no_argument, 0, 'h' },
+        { "include-path", required_argument, 0, 'I' },
+        { "include", required_argument, 0, 'i' },
+        { "define", required_argument, 0, 'D' },
+        { "log-file", required_argument, 0, 'L' },
+        { "no-clang-includepath", no_argument, 0, 'p' },
+        { "append", no_argument, 0, 'A' },
+        { "verbose", no_argument, 0, 'v' },
+        { "thread-count", required_argument, 0, 'j' },
+        { "datadir", required_argument, 0, 'd' },
+        { "clean-slate", no_argument, 0, 'C' },
+        { "cache-size", required_argument, 0, 'c' },
+        { "disable-sighandler", no_argument, 0, 's' },
+        { "name", required_argument, 0, 'n' },
+        { "usedashB", no_argument, 0, 'B' },
+        { "silent", no_argument, 0, 'S' },
+        { 0, 0, 0, 0 }
+    };
+
+    int jobs = ThreadPool::idealThreadCount();
+    unsigned options = 0;
+    List<ByteArray> defaultArguments;
+    const char *logFile = 0;
+    unsigned logFlags = 0;
+    int logLevel = 0;
+    bool clearDataDir = false;
+    Path datadir = RTags::rtagsDir();
+    const ByteArray shortOptions = RTags::shortOptions(opts);
+    int cacheSize = 128;
+    bool enableSignalHandler = true;
+    ByteArray name;
+    while (true) {
+        const int c = getopt_long(argc, argv, shortOptions.constData(), opts, 0);
+        if (c == -1)
+            break;
+        switch (c) {
+        case 'S':
+            logLevel = -1;
+            break;
+        case 'n':
+            name = optarg;
+            break;
+        case 'h':
+            usage(stdout);
+            return 0;
+        case 'B':
+            options |= Server::UseDashB;
+            break;
+        case 'd':
+            datadir = Path::resolved(optarg);
+            break;
+        case 'p':
+            options |= Server::NoClangIncludePath;
+            break;
+        case 's':
+            enableSignalHandler = false;
+            break;
+        case 'C':
+            clearDataDir = true;
+            break;
+        case 'c': {
+            bool ok;
+            cacheSize = ByteArray(optarg, strlen(optarg)).toUInt(&ok);
+            if (!ok) {
+                fprintf(stderr, "Can't parse argument to -c %s\n", optarg);
+                return 1;
+            }
+            break; }
+        case 'j':
+            jobs = atoi(optarg);
+            if (jobs <= 0) {
+                fprintf(stderr, "Can't parse argument to -j %s\n", optarg);
+                return 1;
+            }
+            break;
+        case 'D':
+            defaultArguments.append("-D" + ByteArray(optarg));
+            break;
+        case 'I':
+            defaultArguments.append("-I" + ByteArray(optarg));
+            break;
+        case 'i':
+            defaultArguments.append("-include");
+            defaultArguments.append(optarg);
+            break;
+        case 'A':
+            logFlags |= Append;
+            break;
+        case 'L':
+            logFile = optarg;
+            break;
+        case 'v':
+            if (logLevel >= 0)
+                ++logLevel;
+            break;
+        case '?':
+            usage(stderr);
+            return 1;
         }
     }
-    return totalWritten;
-}
-
-int dirtySymbolNames(const Set<uint32_t> &dirty)
-{
-    int ret = 0;
-    ScopedDB db = Server::instance()->db(Server::SymbolName, ScopedDB::Write);
-
-    RTags::Ptr<Iterator> it(db->createIterator());
-    it->seekToFirst();
-    while (it->isValid()) {
-        Set<Location> locations = it->value<Set<Location> >();
-        Set<Location>::iterator i = locations.begin();
-        bool changed = false;
-        while (i != locations.end()) {
-            if (dirty.contains(*i)) {
-                changed = true;
-                locations.erase(i++);
-                ++ret;
-            } else {
-                ++i;
-            }
-        }
-        if (changed) {
-            if (locations.isEmpty()) {
-                debug() << "No references to " << it->key() << " anymore. Removing";
-                db->remove(it->key());
-            } else {
-                debug() << "References to " << it->key() << " modified. Changing";
-                db->setValue<Set<Location> >(it->key(), locations);
-            }
-        }
-        it->next();
+    if (optind < argc) {
+        fprintf(stderr, "rdm: unexpected option -- '%s'\n", argv[optind]);
+        return 1;
     }
-    return ret;
-}
 
-int dirtySymbols(const Map<uint32_t, Set<uint32_t> > &dirty)
-{
-    int ret = 0;
-    ScopedDB db = Server::instance()->db(Server::Symbol, ScopedDB::Write);
-    RTags::Ptr<Iterator> it(db->createIterator());
-    char key[8];
-    for (Map<uint32_t, Set<uint32_t> >::const_iterator i = dirty.begin(); i != dirty.end(); ++i) {
-        const Location loc(i->first, 0);
-        loc.toKey(key);
-        const bool selfDirty = i->second.contains(i->first);
-        it->seek(Slice(key, sizeof(key)));
-        while (it->isValid()) {
-            const Slice key = it->key();
-            assert(key.size() == 8);
-            const Location loc = Location::fromKey(key.data());
-            if (loc.fileId() != i->first)
-                break;
-            CursorInfo cursorInfo = it->value<CursorInfo>();
-            switch (cursorInfo.dirty(i->second, selfDirty)) {
-            case CursorInfo::Unchanged:
-                break;
-            case CursorInfo::Modified:
-                db->setValue<CursorInfo>(key, cursorInfo);
-                ++ret;
-                break;
-            case CursorInfo::Empty:
-                db->remove(it->key());
-                ++ret;
-                break;
-            }
-            it->next();
-        }
+    if (enableSignalHandler) {
+        signal(SIGINT, signalHandler);
     }
-    return ret;
-}
 
-List<ByteArray> compileArgs(uint32_t fileId)
-{
-    ScopedDB db = Server::instance()->db(Server::FileInformation, ScopedDB::Read);
-    const char *ch = reinterpret_cast<const char*>(&fileId);
-    const Slice key(ch, sizeof(fileId));
-    FileInformation fi = db->value<FileInformation>(key);
-    return fi.compileArgs;
-}
+    ThreadPool::globalInstance()->setConcurrentJobs(jobs);
+    if (!initLogging(logLevel, logFile, logFlags)) {
+        fprintf(stderr, "Can't initialize logging with %d %s 0x%0x\n",
+                logLevel, logFile ? logFile : "", logFlags);
+        return 1;
+    }
+    if (!Server::setBaseDirectory(datadir, clearDataDir))
+        return 1;
+    if (clearDataDir) {
+        warning("Removing contents of cache directory [%s]", datadir.constData());
+    }
+
+    warning("Running with %d jobs", jobs);
+
+    EventLoop loop;
+
+    Server *server = new Server;
+    Server::Options serverOpts;
+    serverOpts.options = options;
+    serverOpts.defaultArguments = defaultArguments;
+    serverOpts.cacheSizeMB = cacheSize;
+    serverOpts.name = (name.isEmpty() ? ByteArray(RTags::rtagsDir() + "server") : name );
+    if (!server->init(serverOpts)) {
+        delete server;
+        return 1;
+    }
+
+    loop.run();
+    delete server;
+    return 0;
 }

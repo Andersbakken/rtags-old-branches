@@ -10,6 +10,7 @@
 #include <time.h>
 #include <fcntl.h>
 #include <algorithm>
+#include <signal.h>
 
 EventLoop* EventLoop::sInstance = 0;
 
@@ -19,7 +20,11 @@ EventLoop::EventLoop()
     if (!sInstance)
         sInstance = this;
     int err;
+#ifdef OS_Linux
     eintrwrap(err, ::pipe2(mEventPipe, O_NONBLOCK));
+#else
+#warning not done
+#endif
 }
 
 EventLoop::~EventLoop()
@@ -106,6 +111,7 @@ void EventLoop::postEvent(EventReceiver* receiver, Event* event)
 static inline bool gettime(timeval* time, int timeout)
 {
     timespec spec;
+#ifdef OS_Linux
     const int ret = ::clock_gettime(CLOCK_MONOTONIC_RAW, &spec);
     if (ret == -1) {
         memset(time, 0, sizeof(timeval));
@@ -122,6 +128,10 @@ static inline bool gettime(timeval* time, int timeout)
         }
     }
     return true;
+#else
+    #warning not done
+    return false;
+#endif
 }
 
 static inline bool timevalGreaterEqualThan(timeval* a, timeval* b)

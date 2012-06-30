@@ -101,7 +101,7 @@ void MakefileParser::run(const Path &makefile, const List<ByteArray> &args)
     std::list<ByteArray> environment = Process::environment();
     if (!args.contains("-B")) {
         Path p = RTags::applicationDirPath();
-#ifdef OS_Mac
+#ifdef OS_Darwin
         p += "/../makelib/libmakelib.dylib";
         p.resolve();
         environment.push_back("DYLD_INSERT_LIBRARIES=" + p);
