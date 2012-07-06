@@ -15,30 +15,6 @@ ReferencesJob::ReferencesJob(int i, const ByteArray &sym, unsigned fl)
 {
 }
 
-struct LocationAndDefinitionNode
-{
-    LocationAndDefinitionNode(const Location &loc, bool def)
-        : location(loc), isDefinition(def)
-    {}
-    LocationAndDefinitionNode() {}
-    Location location;
-    bool isDefinition;
-
-    bool operator<(const LocationAndDefinitionNode &other) const
-    {
-        if (isDefinition != other.isDefinition)
-            return isDefinition;
-        return location < other.location;
-    }
-    bool operator>(const LocationAndDefinitionNode &other) const
-    {
-        if (isDefinition != other.isDefinition)
-            return !isDefinition;
-        return location > other.location;
-    }
-
-};
-
 void ReferencesJob::execute()
 {
     if (!symbolName.isEmpty()) {
@@ -51,7 +27,7 @@ void ReferencesJob::execute()
     const bool excludeDefsAndDecls = !(flags & QueryMessage::IncludeDeclarationsAndDefinitions);
     ScopedDB db = Server::instance()->db(Server::Symbol, ReadWriteLock::Read);
     const unsigned keyFlags = QueryMessage::keyFlags(flags);
-    Map<Location, bool> refs;
+    Set<Location> refs;
     Set<Location> filtered;
     for (Set<Location>::const_iterator it = locations.begin(); it != locations.end(); ++it) {
         if (isAborted())
@@ -61,56 +37,53 @@ void ReferencesJob::execute()
         Location realLoc;
         CursorInfo cursorInfo = RTags::findCursorInfo(db, location, &realLoc);
         if (RTags::isReference(cursorInfo.kind)) {
-            const Location target = cursorInfo.target;
-            cursorInfo = RTags::findCursorInfo(db, cursorInfo.target);
             if (excludeDefsAndDecls) {
-                filtered.insert(target);
+                filtered.insert(cursorInfo.target);
             } else {
-                refs[target] = cursorInfo.isDefinition;
+                refs.insert(cursorInfo.target);
             }
+            cursorInfo = RTags::findCursorInfo(db, cursorInfo.target);
         } else {
             if (excludeDefsAndDecls) {
                 filtered.insert(realLoc);
             } else {
-                refs[realLoc] = cursorInfo.isDefinition;
+                refs.insert(realLoc);
             }
         }
 
         if (cursorInfo.symbolLength) {
-            if (cursorInfo.target.isValid() && excludeDefsAndDecls) {
-                filtered.insert(cursorInfo.target);
+            if (cursorInfo.target.isValid()) {
+                if (excludeDefsAndDecls) {
+                    filtered.insert(cursorInfo.target);
+                } else {
+                    refs.insert(cursorInfo.target);
+                }
             }
             for (Set<Location>::const_iterator it = cursorInfo.references.begin(); it != cursorInfo.references.end(); ++it) {
                 const Location &l = *it;
                 if (!excludeDefsAndDecls || !filtered.contains(l)) {
-                    refs[l] = false; // none of these should be definitions right?
+                    refs.insert(l);
                 }
             }
             if (cursorInfo.target.isValid() && cursorInfo.kind != CXCursor_VarDecl) {
-                const Location l = cursorInfo.target;
                 cursorInfo = RTags::findCursorInfo(db, cursorInfo.target);
-                refs[l] = cursorInfo.isDefinition;
                 for (Set<Location>::const_iterator it = cursorInfo.references.begin(); it != cursorInfo.references.end(); ++it) {
                     const Location &l = *it;
                     if (!excludeDefsAndDecls || !filtered.contains(l)) {
-                        refs[l] = false;
+                        refs.insert(l);
                     }
                 }
             }
         }
     }
-    List<LocationAndDefinitionNode> sorted(refs.size());
-    int i = 0;
-    for (Map<Location, bool>::const_iterator it = refs.begin(); it != refs.end(); ++it) {
-        sorted[i++] = LocationAndDefinitionNode(it->first, it->second);
-    }
-
+    List<Location> sorted = refs.toList();
     if (flags & QueryMessage::ReverseSort) {
-        std::sort(sorted.begin(), sorted.end(), std::greater<LocationAndDefinitionNode>());
+        std::sort(sorted.begin(), sorted.end(), std::greater<Location>());
     } else {
         std::sort(sorted.begin(), sorted.end());
     }
-    for (List<LocationAndDefinitionNode>::const_iterator it = sorted.begin(); it != sorted.end(); ++it) {
-        write(it->location.key(keyFlags));
+    for (List<Location>::const_iterator it = sorted.begin(); it != sorted.end(); ++it) {
+        const Location &l = *it;
+        write(l.key(keyFlags));
     }
 }
