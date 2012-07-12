@@ -55,14 +55,17 @@ public:
     List<ByteArray> defaultArguments() const { return mOptions.defaultArguments; }
     ScopedDB db(DatabaseType type, ReadWriteLock::LockType lockType, const Path &path = Path()) const;
     struct Options {
-        Options() : options(0), cacheSizeMB(0), maxCompletionUnits(0), threadCount(0) {}
+        Options() : options(0), cacheSizeMB(0), maxCompletionUnits(0), threadCount(0), maxCacheUnits(0) {}
         unsigned options;
         List<ByteArray> defaultArguments;
         long cacheSizeMB;
         Path socketPath;
         int maxCompletionUnits;
         int threadCount;
+        int maxCacheUnits;
     };
+
+    const Options &options() const { return mOptions; }
     bool init(const Options &options);
     std::tr1::shared_ptr<Indexer> indexer() const;
     ByteArray name() const { return mOptions.socketPath; }

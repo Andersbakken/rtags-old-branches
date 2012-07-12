@@ -79,10 +79,12 @@ static ByteArray pchFileName(const Path &pchDir, const Path &header)
     return ret;
 }
 
-static inline Map<Path, Path> extractPchFiles(const Path &pchDir, const List<ByteArray> &args)
+static inline Map<Path, Path> extractPchFiles(const Path &pchDir, const List<ByteArray> &args, bool &isPch)
 {
     Map<Path, Path> out;
+    isPch = false;
     bool nextIsPch = false;
+    bool nextIsDashX = false;
     const int count = args.size();
     for (int i=0; i<count; ++i) {
         const ByteArray &arg = args.at(i);
@@ -98,8 +100,13 @@ static inline Map<Path, Path> extractPchFiles(const Path &pchDir, const List<Byt
             if (lastModified && lastModified <= lastModifiedPch) {
                 out[header] = pchFile;
             }
+        } else if (nextIsDashX) {
+            nextIsDashX = false;
+            isPch = (arg == "c++-header" || arg == "c-header");
         } else if (arg == "-include-pch") {
             nextIsPch = true;
+        } else if (arg == "-x") {
+            nextIsDashX = true;
         }
     }
     return out;
@@ -118,12 +125,15 @@ static inline int writeFileInformation(uint32_t fileId, const List<ByteArray> &a
 
 
 IndexerJob::IndexerJob(Indexer *indexer, int id, unsigned flags,
-                       const Path &input, const List<ByteArray> &arguments)
+                       const Path &input, const List<ByteArray> &arguments,
+                       CXTranslationUnit unit, CXIndex index)
 
-    : mId(id), mFlags(flags), mIsPch(false), mDoneFullUSRScan(false), mIn(input),
+    : mId(id), mFlags(flags), mDoneFullUSRScan(false), mIn(input),
       mFileId(Location::insertFile(input)), mArgs(arguments), mIndexer(indexer),
-      mPchHeaders(extractPchFiles(mIndexer->projectRoot(), arguments)), mUnit(0)
+      mPchHeaders(extractPchFiles(mIndexer->projectRoot(), arguments, mIsPch)), mUnit(unit),
+      mIndex(index)
 {
+    assert(!mIndex == !mUnit);
 }
 
 static inline uint32_t fileId(CXFile file)
@@ -627,33 +637,10 @@ CXChildVisitResult IndexerJob::processCursor(const Cursor &cursor, const Cursor 
     return CXChildVisit_Recurse;
 }
 
-struct Scope {
-    ~Scope()
-    {
-        cleanup();
-    }
-    void cleanup()
-    {
-        headerMap.clear();
-        if (unit && !(flags & IndexerJob::PersistTranslationUnit)) {
-            clang_disposeTranslationUnit(unit);
-            unit = 0;
-        }
-        if (index) {
-            clang_disposeIndex(index);
-            index = 0;
-        }
-    }
-
-    Map<Str, CXCursor> &headerMap;
-    CXTranslationUnit &unit;
-    CXIndex &index;
-    const unsigned flags;
-};
-
 void IndexerJob::run()
 {
     execute();
+    mHeaderMap.clear();
     mFinished(this);
 }
 
@@ -704,9 +691,8 @@ void IndexerJob::execute()
     if (!mPchHeaders.isEmpty())
         mPchUSRMap = mIndexer->pchUSRMap(mPchHeaders.keys());
 
-    List<const char*> clangArgs(mArgs.size(), 0);
+    List<const char*> clangArgs(mUnit ? 0 : mArgs.size(), 0);
     ByteArray clangLine = CLANG_BIN "clang ";
-    bool nextIsX = false;
     ByteArray pchName;
 
     int idx = 0;
@@ -717,25 +703,23 @@ void IndexerJob::execute()
         if (arg.isEmpty())
             continue;
 
-        if (nextIsX) {
-            nextIsX = false;
-            mIsPch = (arg == "c++-header" || arg == "c-header");
-        }
         if (arg == "-include-pch") {
             ++i;
             continue;
         }
-        clangArgs[idx++] = arg.constData();
+        if (!mUnit) {
+            clangArgs[idx++] = arg.constData();
+        }
         arg.replace("\"", "\\\"");
         clangLine += arg;
         clangLine += " ";
-        if (arg == "-x") {
-            nextIsX = true;
-        }
     }
     for (Map<Path, Path>::const_iterator it = mPchHeaders.begin(); it != mPchHeaders.end(); ++it) {
-        clangArgs[idx++] = "-include-pch";
-        clangArgs[idx++] = it->second.constData();
+        if (!mUnit) {
+            clangArgs[idx++] = "-include-pch";
+            clangArgs[idx++] = it->second.constData();
+        }
+        clangLine += " -include-pch " + it->second;
     }
 
     if (mIsPch) {
@@ -746,11 +730,30 @@ void IndexerJob::execute()
     if (isAborted()) {
         return;
     }
-    CXIndex index = clang_createIndex(1, 0);
-    mUnit = clang_parseTranslationUnit(index, mIn.constData(),
-                                       clangArgs.data(), idx, 0, 0,
-                                       CXTranslationUnit_Incomplete | CXTranslationUnit_DetailedPreprocessingRecord);
-    Scope scope = { mHeaderMap, mUnit, index, mFlags };
+    bool reparse;
+    if (!mUnit) {
+        reparse = false;
+        assert(!mUnit);
+        mIndex = clang_createIndex(1, 0);
+        mUnit = clang_parseTranslationUnit(mIndex, mIn.constData(),
+                                           clangArgs.data(), idx, 0, 0,
+                                           CXTranslationUnit_Incomplete
+                                           |CXTranslationUnit_DetailedPreprocessingRecord
+                                           |CXTranslationUnit_PrecompiledPreamble
+                                           |CXTranslationUnit_CXXPrecompiledPreamble);
+        if (!mUnit) {
+            clang_disposeIndex(mIndex);
+            mIndex = 0;
+        }
+    } else {
+        reparse = true;
+        if (clang_reparseTranslationUnit(mUnit, 0, 0, clang_defaultReparseOptions(mUnit))) {
+            clang_disposeTranslationUnit(mUnit);
+            clang_disposeIndex(mIndex);
+            mUnit = 0;
+            mIndex = 0;
+        }
+    }
     const time_t timeStamp = time(0);
     // fprintf(stdout, "%s => %d\n", clangLine.nullTerminated(), (mUnit != 0));
 
@@ -857,7 +860,6 @@ void IndexerJob::execute()
                 mDependencies[*it].insert(mFileId);
             }
         }
-        scope.cleanup();
 
         if (!isAborted()) {
             Set<uint32_t> indexed;
@@ -885,16 +887,34 @@ void IndexerJob::execute()
     }
 
     char buf[1024];
-    const char *strings[] = { "", " (pch)", " (dirty)", " (pch, dirty)" };
+    const char *strings[] = {
+        "",
+        " (pch)",
+        " (dirty)",
+        " (pch|dirty)",
+        " (reparse)",
+        " (pch|reparse)",
+        " (dirty|reparse)",
+        " (pch|dirty|reparse)"
+    };
     enum {
         IdxNone = 0x0,
         IdxPch = 0x1,
-        IdxDirty = 0x2
+        IdxDirty = 0x2,
+        IdxReparse = 0x4
     };
+    int index = 0;
+    if (!mPchHeaders.isEmpty())
+        index |= IdxPch;
+    if (mFlags & (Dirty|DirtyPch))
+        index |= IdxDirty;
+    if (reparse)
+        index |= IdxReparse;
+
     const int w = snprintf(buf, sizeof(buf), "Visited %s (%s) in %sms. (%d syms, %d refs, %d deps, %d symNames)%s",
                            mIn.constData(), compileError ? "error" : "success", ByteArray::number(timer.elapsed()).constData(),
                            mSymbols.size(), mReferences.size(), mDependencies.size(), mSymbolNames.size(),
-                           strings[(mPchHeaders.isEmpty() ? IdxNone : IdxPch) | (mFlags & (DirtyPch|Dirty) ? IdxDirty : IdxNone)]);
+                           strings[index]);
     mMessage = ByteArray(buf, w);
     if (testLog(Warning)) {
         warning() << "We're using " << double(MemoryMonitor::usage()) / double(1024 * 1024) << " MB of memory " << timer.elapsed() << "ms";

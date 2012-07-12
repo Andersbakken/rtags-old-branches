@@ -70,24 +70,25 @@ void usage(FILE *f)
 {
     fprintf(f,
             "rdm [...options...]\n"
-            "  --help|-h                       Display this page\n"
-            "  --include-path|-I [arg]         Add additional include path to clang\n"
-            "  --include|-i [arg]              Add additional include directive to clang\n"
-            "  --define|-D [arg]               Add additional define directive to clang\n"
-            "  --log-file|-L [arg]             Log to this file\n"
-            "  --append|-A                     Append to log file\n"
-            "  --verbose|-v                    Change verbosity, multiple -v's are allowed\n"
-            "  --clean-slate|-C                Start from a clean slate\n"
-            "  --datadir|-d [arg]              Use this as datadir (default ~/.rtags\n"
-            "  --disable-sighandler|-s         Disable signal handler to dump stack for crashes\n"
-            "  --cache-size|-c [size]          Cache size in MB (one cache per db, default 128MB)\n"
-            "  --name|-n [name]                Name to use for server (default ~/.rtags/server)\n"
-            "  --no-clang-includepath|-p       Don't use clang include paths by default\n"
-            "  --usedashB|-B                   Use -B for make instead of makelib\n"
-            "  --silent|-S                     No logging to stdout\n"
-            "  --max-completion-units|-x [arg] Max translation units to keep in memory for completions (default 10)\n"
-            "  --no-validate-on-startup|-V     Disable validation of database on startup\n"
-            "  --thread-count|-j [arg]         Spawn this many threads for thread pool\n");
+            "  --help|-h                              Display this page\n"
+            "  --include-path|-I [arg]                Add additional include path to clang\n"
+            "  --include|-i [arg]                     Add additional include directive to clang\n"
+            "  --define|-D [arg]                      Add additional define directive to clang\n"
+            "  --log-file|-L [arg]                    Log to this file\n"
+            "  --append|-A                            Append to log file\n"
+            "  --verbose|-v                           Change verbosity, multiple -v's are allowed\n"
+            "  --clean-slate|-C                       Start from a clean slate\n"
+            "  --datadir|-d [arg]                     Use this as datadir (default ~/.rtags\n"
+            "  --disable-sighandler|-s                Disable signal handler to dump stack for crashes\n"
+            "  --cache-size|-c [size]                 Cache size in MB (one cache per db, default 128MB)\n"
+            "  --name|-n [name]                       Name to use for server (default ~/.rtags/server)\n"
+            "  --no-clang-includepath|-p              Don't use clang include paths by default\n"
+            "  --usedashB|-B                          Use -B for make instead of makelib\n"
+            "  --silent|-S                            No logging to stdout\n"
+            "  --max-completion-units|-x [arg]        Max translation units to keep in memory for completions (default 10)\n"
+            "  --no-validate-on-startup|-V            Disable validation of database on startup\n"
+            "  --translation-unit-cache-size|-t [arg] Max translation units to keep in cache per project (default 5)\n"
+            "  --thread-count|-j [arg]                Spawn this many threads for thread pool\n");
 }
 
 int main(int argc, char** argv)
@@ -112,6 +113,7 @@ int main(int argc, char** argv)
         { "silent", no_argument, 0, 'S' },
         { "max-completion-units", required_argument, 0, 'x' },
         { "no-validate-on-startup", no_argument, 0, 'V' },
+        { "translation-unit-cache-size", required_argument, 0, 't' },
         { 0, 0, 0, 0 }
     };
 
@@ -126,6 +128,7 @@ int main(int argc, char** argv)
     const ByteArray shortOptions = RTags::shortOptions(opts);
     int cacheSize = 128;
     int maxCompletionUnits = 10;
+    int maxCacheUnits = 5;
     bool enableSignalHandler = true;
     ByteArray name;
     while (true) {
@@ -142,6 +145,15 @@ int main(int argc, char** argv)
             maxCompletionUnits = arg.toULongLong(&ok);
             if (!ok) {
                 fprintf(stderr, "%s is not a valid argument for -x\n", optarg);
+                return 1;
+            }
+            break; }
+        case 't': {
+            const ByteArray arg(optarg);
+            bool ok;
+            maxCacheUnits = arg.toULongLong(&ok);
+            if (!ok) {
+                fprintf(stderr, "%s is not a valid argument for -t\n", optarg);
                 return 1;
             }
             break; }
@@ -239,6 +251,7 @@ int main(int argc, char** argv)
     serverOpts.options = options;
     serverOpts.defaultArguments = defaultArguments;
     serverOpts.cacheSizeMB = cacheSize;
+    serverOpts.maxCacheUnits = maxCacheUnits;
     serverOpts.threadCount = jobs;
     serverOpts.socketPath = (name.isEmpty() ? ByteArray(RTags::rtagsDir() + "server") : name );
     if (!server->init(serverOpts)) {

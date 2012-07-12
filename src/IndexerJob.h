@@ -17,11 +17,11 @@ public:
         DirtyPch = 0x04,
         Dirty = 0x02,
         Makefile = 0x1,
-        Priorities = DirtyPch|Dirty|Makefile,
-        PersistTranslationUnit = 0x8
+        Priorities = DirtyPch|Dirty|Makefile
     };
     IndexerJob(Indexer *indexer, int id, unsigned flags,
-               const Path &input, const List<ByteArray> &arguments);
+               const Path &input, const List<ByteArray> &arguments,
+               CXTranslationUnit unit, CXIndex index);
     int priority() const { return mFlags & Priorities; }
     virtual void run();
     void execute();
@@ -71,6 +71,7 @@ public:
 
     Map<Path, Path> mPchHeaders;
     CXTranslationUnit mUnit;
+    CXIndex mIndex;
 
     ByteArray mMessage;
 

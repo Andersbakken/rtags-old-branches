@@ -9,6 +9,7 @@
 #include "ThreadPool.h"
 #include "Timer.h"
 #include <clang-c/Index.h>
+#include <list>
 
 class IndexerJob;
 class DirtyThread;
@@ -85,6 +86,32 @@ private:
     Set<Location> mPreviousErrors;
 
     signalslot::Signal1<Indexer*> mJobsComplete;
+
+    struct CacheEntry
+    {
+    public:
+        CacheEntry()
+            : unit(0), index(0), flags(0), next(0), prev(0)
+        {}
+        ~CacheEntry()
+        {
+            assert(!unit == !index);
+            if (unit) {
+                clang_disposeTranslationUnit(unit);
+                clang_disposeIndex(index);
+            }
+        }
+        CXTranslationUnit unit;
+        CXIndex index;
+        Path path;
+        List<ByteArray> args;
+        unsigned flags; // this is with prioriy and'ed out
+        CacheEntry *next, *prev;
+    } *mFirst, *mLast;
+
+    void removeCacheEntry(CacheEntry *entry);
+    void insertCacheEntry(CacheEntry *entry);
+    int mCacheSize;
 };
 
 inline bool Indexer::visitFile(uint32_t fileId, const Path &path, bool isPch)

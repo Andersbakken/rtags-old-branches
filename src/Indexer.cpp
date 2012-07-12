@@ -16,7 +16,7 @@
 #include <math.h>
 
 Indexer::Indexer()
-    : mJobCounter(0), mTimerRunning(false)
+    : mJobCounter(0), mTimerRunning(false), mFirst(0), mLast(0), mCacheSize(0)
 {
 }
 
@@ -99,7 +99,6 @@ void Indexer::initDB(InitMode mode, const ByteArray &pattern)
                 }
             }
         }
-
 
         int checked = 0;
 
@@ -251,6 +250,30 @@ void Indexer::commitDependencies(const DependencyMap &deps, bool sync) // always
 void Indexer::onJobFinished(IndexerJob *job)
 {
     MutexLocker lock(&mMutex);
+    if (job->mUnit) {
+        assert(job->mIndex);
+        const int max = Server::instance()->options().maxCacheUnits;
+
+        if (!max) {
+            clang_disposeTranslationUnit(job->mUnit);
+            clang_disposeIndex(job->mIndex);
+        } else {
+            CacheEntry *entry = 0;
+            if (mCacheSize == max) {
+                entry = mLast;
+                removeCacheEntry(entry);
+            } else {
+                entry = new CacheEntry;
+            }
+
+            entry->unit = job->mUnit;
+            entry->index = job->mIndex;
+            entry->flags = (job->mFlags & ~IndexerJob::Priorities);
+            entry->path = job->mIn;
+            entry->args = job->mArgs;
+            insertCacheEntry(entry);
+        }
+    }
     if (job->isAborted()) {
         Set<uint32_t> visited;
         for (Map<uint32_t, IndexerJob::PathState>::const_iterator it = job->mPaths.begin(); it != job->mPaths.end(); ++it) {
@@ -294,11 +317,9 @@ void Indexer::onJobFinished(IndexerJob *job)
                     << MemoryMonitor::usage() / (1024.0 * 1024.0) << " mb of memory";
             mJobCounter = 0;
             jobsComplete()(this);
-            // if (mPendingModifiedDirectories.isEmpty()) {
             ValidateDBJob *validateJob = new ValidateDBJob(mSrcRoot, mPreviousErrors);
             validateJob->errors().connect(this, &Indexer::onValidateDBJobErrors);
             Server::instance()->startJob(validateJob);
-            // }
         }
         mWaitCondition.wakeAll();
     }
@@ -312,7 +333,21 @@ int Indexer::index(const Path &input, const List<ByteArray> &arguments, unsigned
     const uint32_t fileId = Location::insertFile(input);
 
     const int id = ++mJobCounter;
-    IndexerJob *job = new IndexerJob(this, id, indexerJobFlags, input, arguments);
+
+    CXTranslationUnit unit = 0;
+    CXIndex index = 0;
+    for (CacheEntry *entry = mFirst; entry; entry = entry->next) {
+        if (entry->flags == (indexerJobFlags & ~IndexerJob::Priorities) && entry->path == input && entry->args == arguments) {
+            std::swap(unit, entry->unit);
+            std::swap(index, entry->index);
+            removeCacheEntry(entry);
+            assert(unit && index);
+            delete entry;
+            break;
+        }
+    }
+
+    IndexerJob *job = new IndexerJob(this, id, indexerJobFlags, input, arguments, unit, index);
     job->finished().connect(this, &Indexer::onJobFinished);
 
     if (needsToWaitForPch(job)) {
@@ -615,4 +650,38 @@ void Indexer::dirty(const Set<uint32_t> &dirtyFileIds,
     for (Map<Path, List<ByteArray> >::const_iterator it = dirty.begin(); it != dirty.end(); ++it) {
         index(it->first, it->second, IndexerJob::Dirty);
     }
+}
+
+void Indexer::removeCacheEntry(CacheEntry *entry)
+{
+    assert(mFirst && mLast && entry && mCacheSize > 0);
+    if (mCacheSize == 1) {
+        mFirst = mLast = 0;
+    } else {
+        if (entry->prev)
+            entry->prev->next = entry->next;
+        if (entry->next)
+            entry->next->prev = entry->prev;
+        if (entry == mFirst) {
+            mFirst = entry->next;
+        } else if (entry == mLast) {
+            mLast = entry->prev;
+        }
+    }
+    --mCacheSize;
+}
+
+void Indexer::insertCacheEntry(CacheEntry *entry)
+{
+    if (!mCacheSize) {
+        mFirst = mLast = entry;
+        entry->next = entry->prev = 0;
+    } else {
+        assert(mFirst);
+        entry->next = mFirst;
+        entry->prev = 0;
+        mFirst->prev = entry;
+        mFirst = entry;
+    }
+    ++mCacheSize;
 }
