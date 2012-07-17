@@ -117,7 +117,7 @@ void Indexer::initDB(InitMode mode, const ByteArray &pattern)
                     if (!fi.compileArgs.isEmpty()) {
 #ifdef RTAGS_DEBUG
                         if (path.isHeader() && !RTags::isPch(fi.compileArgs)) {
-                            error() << path << fi.compileArgs << fileId;
+                            error() << path << " " << fi.compileArgs << " " << fileId;
                             assert(0);
                         }
 #endif

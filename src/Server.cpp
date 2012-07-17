@@ -37,9 +37,6 @@
 #include <dirent.h>
 #include <fnmatch.h>
 
-Path Server::sBase;
-Path Server::sProjectsDir;
-
 class MakefileParserDoneEvent : public Event
 {
 public:
@@ -120,6 +117,7 @@ bool Server::init(const Options &options)
     mCompletions = new Completions(mOptions.maxCompletionUnits);
 
     Messages::init();
+    Path::mkdir(mOptions.path);
 
     for (int i=0; i<10; ++i) {
         mServer = new LocalServer;
@@ -140,6 +138,7 @@ bool Server::init(const Options &options)
         error("Unable to listen on %s", mOptions.socketPath.constData());
         return false;
     }
+
     for (unsigned i=0; i<sizeof(mDBs) / sizeof(Database*); ++i) {
         const DatabaseType type = static_cast<DatabaseType>(i + ProjectSpecificDatabaseTypeCount);
         mDBs[i] = new Database(databaseDir(type), options.cacheSizeMB, Database::NoFlag);
@@ -186,7 +185,7 @@ bool Server::init(const Options &options)
     mServer->clientConnected().connect(this, &Server::onNewConnection);
 
     error() << "running with " << mOptions.defaultArguments << " clang version " << RTags::eatString(clang_getClangVersion());
-    sProjectsDir.visit(projectsVisitor, this);
+    mProjectsDir.visit(projectsVisitor, this);
 
     if (!(mOptions.options & NoValidateOnStartup))
         remake();
@@ -373,7 +372,7 @@ void Server::handleQueryMessage(QueryMessage *message, Connection *conn)
         delete mThreadPool;
         mThreadPool = 0;
         clear();
-        Server::setBaseDirectory(sBase, true);
+        clearDataDir();
         ResponseMessage msg("Cleared data dir");
         init(mOptions);
         conn->send(&msg);
@@ -605,37 +604,30 @@ Path Server::databaseDir(DatabaseType type)
                 ? ::databaseDir(type, mCurrentProject->projectPath.constData())
                 : Path());
     }
-    return ::databaseDir(type, sBase.constData());
+    return ::databaseDir(type, mOptions.path.constData());
 }
 
-Path Server::projectsPath()
+Path Server::projectsPath() const
 {
-    if (sBase.isEmpty())
+    if (mOptions.path.isEmpty())
         return Path();
-    return sBase + "projects/";
+    return mOptions.path + "projects/";
 }
 
-bool Server::setBaseDirectory(const Path &base, bool clear)
+void Server::clearDataDir()
 {
-    sBase = base;
-    if (!sBase.endsWith('/'))
-        sBase.append('/');
-    if (clear) {
-        RTags::removeDirectory(base);
-        error() << "cleared database dir " << base;
-    }
+    RTags::removeDirectory(mOptions.path);
+    error() << "cleared data dir " << mOptions.path;
 
-    if (!Path::mkdir(sBase)) {
-        error("Can't create directory [%s]", sBase.constData());
-        return false;
+    if(!Path::mkdir(mOptions.path)) {
+        error("Can't create directory [%s]", mOptions.path.constData());
+        return;
     }
-    if (!sBase.mksubdir("projects")) {
-        error("Can't create directory [%s/projects]", sBase.constData());
-        return false;
+    if (!mOptions.path.mksubdir("projects")) {
+        error("Can't create directory [%s/projects]", mOptions.path.constData());
+        return;
     }
-    sProjectsDir = base + "projects/";
-
-    return true;
+    mProjectsDir = mOptions.path + "projects/";
 }
 
 void Server::reindex(const ByteArray &pattern)
@@ -945,7 +937,7 @@ Server::Project *Server::initProject(const Path &path)
         }
         tmp.append('/');
         project = new Project;
-        project->projectPath = sProjectsDir + tmp;
+        project->projectPath = mProjectsDir + tmp;
         Path::mkdir(project->projectPath);
         Project *prev = mCurrentProject;
         mCurrentProject = project;
