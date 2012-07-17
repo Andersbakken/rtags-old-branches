@@ -271,7 +271,6 @@ void Server::handleMakefileMessage(MakefileMessage *message, Connection *conn)
 void Server::make(const Path &path, List<ByteArray> makefileArgs, const List<ByteArray> &extraFlags, Connection *conn)
 {
     MakefileParser *parser = new MakefileParser(extraFlags, conn);
-    parser->fileReady().connect(this, &Server::onFileReady);
     parser->done().connect(this, &Server::onMakefileParserDone);
     if (mOptions.options & UseDashB)
         makefileArgs.append("-B");
@@ -281,6 +280,7 @@ void Server::make(const Path &path, List<ByteArray> makefileArgs, const List<Byt
 void Server::onMakefileParserDone(MakefileParser *parser)
 {
     assert(parser);
+
     Connection *connection = parser->connection();
     if (connection) {
         char buf[1024];

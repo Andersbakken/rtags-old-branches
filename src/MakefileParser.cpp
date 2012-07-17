@@ -79,7 +79,7 @@ void DirectoryTracker::leaveDirectory(const ByteArray &dir)
 
 MakefileParser::MakefileParser(const List<ByteArray> &extraFlags, Connection *conn)
     : mProc(0), mTracker(new DirectoryTracker), mExtraFlags(extraFlags),
-      mSourceCount(0), mPchCount(0), mConnection(conn), mHasProject(false)
+      mConnection(conn), mHasProject(false)
 {
 }
 
@@ -173,12 +173,37 @@ void MakefileParser::processMakeLine(const ByteArray &line)
     GccArguments args;
     if (args.parse(line, mTracker->path())) {
         args.addFlags(mExtraFlags);
+        List<Path> inputFiles = args.inputFiles();
+        List<Path> unresolvedInputFiles = args.unresolvedInputFiles();
+        const int c = inputFiles.size();
+        assert(c == unresolvedInputFiles.size());
+        ByteArray output;
         if (args.type() == GccArguments::Pch) {
-            ++mPchCount;
-        } else {
-            ++mSourceCount;
+            output = args.outputFile();
+            assert(!output.isEmpty());
+            const int ext = output.lastIndexOf(".gch/c");
+            if (ext != -1) {
+                output = output.left(ext + 4);
+            } else if (!output.endsWith(".gch")) {
+                error("couldn't find .gch in pch output");
+                return;
+            }
         }
-        fileReady()(args, this);
+
+        for (int i=0; i<c; ++i) {
+            const Path p = inputFiles.at(i);
+            args.mInputFiles.clear();
+            args.mInputFiles.append(p);
+            const Path unresolved = unresolvedInputFiles.at(i);
+            args.mUnresolvedInputFiles.clear();
+            args.mUnresolvedInputFiles.append(unresolved);
+            if (args.type() == GccArguments::Pch) {
+                setPch(output, p);
+                mPchFiles[p] = args;
+            } else {
+                mSourceFiles[p] = args;
+            }
+        }
     } else {
         mTracker->track(line);
     }

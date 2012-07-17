@@ -25,13 +25,14 @@ public:
     Path makefile() const { return mMakefile; }
     Connection *connection() const { return mConnection; }
     signalslot::Signal1<MakefileParser*> &done() { return mDone; }
-    signalslot::Signal2<const GccArguments &, MakefileParser*> &fileReady() { return mFileReady; }
 
-    int sourceCount() const { return mSourceCount; }
-    int pchCount() const { return mPchCount; }
+    int sourceCount() const { return mSourceFiles.size(); }
+    int pchCount() const { return mPchFiles.size(); }
     Map<Path, List<ByteArray> > &pendingFiles() { return mPendingFiles; }
     bool hasProject() const { return mHasProject; }
     void setHasProject(bool hasProject) { mHasProject = hasProject; }
+    const Map<Path, GccArguments> &pchFiles() { return mPchFiles; }
+    const Map<Path, GccArguments> &sourceFiles() { return mPchFiles; }
 private:
     void processMakeOutput();
     void processMakeError();
@@ -43,13 +44,12 @@ private:
     DirectoryTracker *mTracker;
     const List<ByteArray> mExtraFlags;
     Map<ByteArray, ByteArray> mPchs;
-    int mSourceCount, mPchCount;
     Path mMakefile;
     Connection *mConnection;
     signalslot::Signal1<MakefileParser*> mDone;
-    signalslot::Signal2<const GccArguments &, MakefileParser*> mFileReady;
     bool mHasProject;
     Map<Path, List<ByteArray> > mPendingFiles;
+    Map<Path, GccArguments> mSourceFiles, mPchFiles;
 };
 
 #endif // MAKEFILEPARSER_H
