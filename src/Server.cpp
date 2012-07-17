@@ -117,7 +117,11 @@ bool Server::init(const Options &options)
     mCompletions = new Completions(mOptions.maxCompletionUnits);
 
     Messages::init();
-    Path::mkdir(mOptions.path);
+    if (mOptions.options & ClearDatadir) {
+        clearDataDir();
+    } else {
+        Path::mkdir(mOptions.path);
+    }
 
     for (int i=0; i<10; ++i) {
         mServer = new LocalServer;
@@ -616,10 +620,11 @@ Path Server::projectsPath() const
 
 void Server::clearDataDir()
 {
-    RTags::removeDirectory(mOptions.path);
-    error() << "cleared data dir " << mOptions.path;
+    RTags::removeDirectory(mOptions.path + "/projects");
+    RTags::removeDirectory(databaseDir(General));
+    RTags::removeDirectory(databaseDir(FileIds));
 
-    if(!Path::mkdir(mOptions.path)) {
+    if (!Path::mkdir(mOptions.path)) {
         error("Can't create directory [%s]", mOptions.path.constData());
         return;
     }
