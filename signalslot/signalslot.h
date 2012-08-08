@@ -2,9 +2,21 @@
 #define SIGNALSLOT_H
 
 #include "FastDelegate/FastDelegate.h"
+#include "Event.h"
+#include <memory>
 #include <vector>
 
 namespace signalslot {
+
+class SignalEventBase : public Event
+{
+public:
+    enum { Type = 1000 };
+
+    SignalEventBase() : Event(Type) {}
+
+    virtual void call() = 0;
+};
 
 template<typename Delegate>
 class SignalBase
@@ -56,7 +68,7 @@ public:
     void operator()()
     {
         std::vector<Type>::const_iterator delit = SignalBase<Type>::mDelegates.begin();
-        const  std::vector<Type>::const_iterator delend = SignalBase<Type>::mDelegates.end();
+        const std::vector<Type>::const_iterator delend = SignalBase<Type>::mDelegates.end();
         while (delit != delend) {
             (*delit)();
             ++delit;
@@ -96,6 +108,41 @@ public:
         SignalBase<Type>::mDelegates.clear();
         SignalBase<Type>::mSignals.clear();
     }
+};
+
+template<typename Delegate>
+class SignalEvent0 : public SignalEventBase
+{
+public:
+    SignalEvent0(const std::vector<std::weak_ptr<Delegate> >& delegates,
+                 const std::vector<std::weak_ptr<const SignalBase<Delegate>*> >& signals)
+        : mDelegates(delegates), mSignals(signals)
+    {
+    }
+
+    void call()
+    {
+        typename std::vector<std::weak_ptr<Delegate> >::const_iterator delit = SignalEvent0<Delegate>::mDelegates.begin();
+        const typename std::vector<std::weak_ptr<Delegate> >::const_iterator delend = SignalEvent0<Delegate>::mDelegates.end();
+        while (delit != delend) {
+            std::shared_ptr<Delegate> shared = delit->lock();
+            if (shared)
+                (*shared)();
+            ++delit;
+        }
+        typename std::vector<std::weak_ptr<const SignalBase<Delegate>*> >::const_iterator sigit = SignalEvent0<Delegate>::mSignals.begin();
+        const typename std::vector<std::weak_ptr<const SignalBase<Delegate>*> >::const_iterator sigend = SignalEvent0<Delegate>::mSignals.end();
+        while (sigit != sigend) {
+            std::shared_ptr<const SignalBase<Delegate>*> shared = sigit->lock();
+            if (shared)
+                (*const_cast<Signal0*>(reinterpret_cast<const Signal0*>(*shared)))();
+            ++sigit;
+        }
+    }
+
+private:
+    std::vector<std::weak_ptr<Delegate> > mDelegates;
+    std::vector<std::weak_ptr<const SignalBase<Delegate>*> > mSignals;
 };
 
 template<typename Arg1>

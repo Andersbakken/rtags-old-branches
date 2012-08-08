@@ -44,9 +44,12 @@ MACRO (ADD_PCH_RULE _header_filename _src_list _cflag_list)
     LIST(APPEND _args -D${_def})
   endforeach(_def ${DIRDEF})
   SEPARATE_ARGUMENTS(_args)
+  if(CMAKE_COMPILER_IS_GNUCXX)
+    set(extra_pch_args -std=gnu++0x)
+  endif()
   add_custom_command(OUTPUT ${_gch_filename}
     COMMAND rm -f ${_gch_filename}
-    COMMAND ${CMAKE_CXX_COMPILER} ${CMAKE_CXX_COMPILER_ARG1} -x c++-header ${_args}
+    COMMAND ${CMAKE_CXX_COMPILER} ${CMAKE_CXX_COMPILER_ARG1} -x c++-header ${extra_pch_args} ${_args}
     DEPENDS ${_header_filename}
             ByteArray.h
             CursorInfo.h

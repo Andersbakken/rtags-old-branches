@@ -10,6 +10,10 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
   add_definitions(-DRTAGS_DEBUG)
 endif()
 
+if(CMAKE_COMPILER_IS_GNUCXX)
+  add_definitions(-std=gnu++0x)
+endif()
+
 add_definitions(-Wall "-DCLANG_INCLUDEPATH=\"${CMAKE_CURRENT_BINARY_DIR}/../3rdparty/clang_install/lib/clang/3.1/include/\""
   "-DCLANG_BIN=\"${CMAKE_CURRENT_BINARY_DIR}/../3rdparty/clang_install/bin/\"")
 
