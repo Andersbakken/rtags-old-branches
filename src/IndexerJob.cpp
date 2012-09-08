@@ -7,7 +7,7 @@
 IndexerJob::IndexerJob(Indexer *indexer, unsigned flags, const Path &p, const List<ByteArray> &arguments)
     : mFlags(flags), mTimeStamp(0), mPath(p), mFileId(Location::insertFile(p)),
       mArgs(arguments), mIndexer(indexer), mUnit(0), mIndex(0), mAborted(false),
-      mIgnoreConstructorRefs(false)
+      mConstructorReferenceLocationOverrideUgleHack(0)
 {
 }
 
@@ -204,28 +204,6 @@ Location IndexerJob::createLocation(const CXCursor &cursor, bool *blocked)
     return ret;
 }
 
-struct FindImplicitEqualsConstructorUserData
-{
-    CXCursor &ref;
-    bool &success;
-};
-static CXChildVisitResult findImplicitEqualsConstructor(CXCursor cursor, CXCursor, CXClientData data)
-{
-    if (clang_getCursorKind(cursor) == CXCursor_UnexposedExpr) {
-        const CXCursor ref = clang_getCursorReferenced(cursor);
-        const CXCursorKind kind = clang_getCursorKind(ref);
-        if (kind == CXCursor_Constructor) {
-            FindImplicitEqualsConstructorUserData *u = reinterpret_cast<FindImplicitEqualsConstructorUserData*>(data);
-            u->success = true;
-            u->ref = ref;
-        } else if (clang_isInvalid(clang_getCursorKind(ref))) {
-            return CXChildVisit_Recurse;
-        }
-    }
-
-    return CXChildVisit_Break;
-}
-
 CXChildVisitResult IndexerJob::indexVisitor(CXCursor cursor, CXCursor parent, CXClientData data)
 {
     IndexerJob *job = static_cast<IndexerJob*>(data);
@@ -276,29 +254,9 @@ CXChildVisitResult IndexerJob::indexVisitor(CXCursor cursor, CXCursor parent, CX
         CXCursor ref = clang_getCursorReferenced(cursor);
         CXCursorKind refKind = clang_getCursorKind(ref);
         if (clang_isInvalid(refKind)) {
-            bool implicitConstructorSpecialCase = false;
-            // terrible hack for these kinds of constructors:
-            // struct Foo { Foo(int); };
-            // Foo f = 12;
-            // The cursors just mess us up, the first CallExpr has no referenced
-            // cursor. The later cursors (callexpr and unexposed expr refer to
-            // the actual constructor but are positioned at the 12 instead of at
-            // the f. This is just completely fucked but I can't think of any
-            // other way to do this.
-            if (kind == CXCursor_CallExpr && clang_getCursorKind(parent) == CXCursor_VarDecl) {
-                FindImplicitEqualsConstructorUserData userData = { ref, implicitConstructorSpecialCase };
-                clang_visitChildren(cursor, findImplicitEqualsConstructor, &userData);
-            }
-            if (!implicitConstructorSpecialCase) {
-                return CXChildVisit_Recurse;
-            } else {
-                refKind = CXCursor_Constructor;
-                job->handleReference(cursor, kind, loc, ref, refKind);
-                job->mIgnoreConstructorRefs = true;
-                clang_visitChildren(cursor, indexVisitor, job);
-                job->mIgnoreConstructorRefs = false;
-                return CXChildVisit_Continue;
-            }
+            job->mConstructorReferenceLocationOverrideUgleHack = &loc;
+            clang_visitChildren(cursor, indexVisitor, job);
+            job->mConstructorReferenceLocationOverrideUgleHack = 0;
         } else if (kind == CXCursor_CallExpr && refKind == CXCursor_Constructor
                    && clang_getCursorKind(parent) == CXCursor_VarDecl) {
             // Terrible hack for these kinds of copy constructors:
@@ -311,7 +269,7 @@ CXChildVisitResult IndexerJob::indexVisitor(CXCursor cursor, CXCursor parent, CX
             // our parent.
             loc = job->createLocation(parent, 0);
         }
-        job->handleReference(cursor, kind, loc, ref, refKind);
+        job->handleReference(cursor, kind, loc);
         break; }
     case RTags::Other:
         assert(0);
@@ -320,10 +278,11 @@ CXChildVisitResult IndexerJob::indexVisitor(CXCursor cursor, CXCursor parent, CX
     return CXChildVisit_Recurse; // ### recurse?
 }
 
-void IndexerJob::handleReference(const CXCursor &cursor, CXCursorKind kind, const Location &loc, const CXCursor &ref, CXCursorKind refKind)
+void IndexerJob::handleReference(const CXCursor &cursor, CXCursorKind kind, const Location &loc)
 {
-    assert(!clang_isInvalid(refKind));
-    if (mIgnoreConstructorRefs && refKind == CXCursor_Constructor)
+    const CXCursor ref = clang_getCursorReferenced(cursor);
+    const CXCursorKind refKind = clang_getCursorKind(ref);
+    if (clang_isInvalid(refKind))
         return;
 
     bool checkImplicit = false;
@@ -409,7 +368,12 @@ void IndexerJob::handleReference(const CXCursor &cursor, CXCursorKind kind, cons
     if (processRef && !mData->symbols.value(refLoc).symbolLength)
         handleCursor(ref, refKind, refLoc);
 
-    handleCursor(cursor, kind, loc, &refLoc);
+
+    if (refKind == CXCursor_Constructor && mConstructorReferenceLocationOverrideUgleHack) {
+        handleCursor(cursor, kind, *mConstructorReferenceLocationOverrideUgleHack, &refLoc);
+    } else {
+        handleCursor(cursor, kind, loc, &refLoc);
+    }
 }
 
 void IndexerJob::addOverriddenCursors(const CXCursor& cursor, const Location& location, List<CursorInfo*>& infos)
