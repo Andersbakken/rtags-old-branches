@@ -186,30 +186,37 @@ static const CXSourceLocation nullLocation = clang_getNullLocation();
 Location IndexerJob::createLocation(const CXCursor &cursor, bool *blocked)
 {
     CXSourceLocation location = clang_getCursorLocation(cursor);
-    Location ret;
-    if (blocked)
-        *blocked = false;
     if (!clang_equalLocations(location, nullLocation)) {
         CXFile file;
         unsigned start;
         clang_getSpellingLocation(location, &file, 0, 0, &start);
-        if (file) {
-            ByteArray fileName = RTags::eatString(clang_getFileName(file));
-            uint32_t &fileId = mFileIds[fileName];
-            if (!fileId)
-                fileId = Location::insertFile(Path::resolved(fileName));
-            ret = Location(fileId, start);
-            if (blocked) {
-                PathState &state = mPaths[fileId];
-                if (state == Unset) {
-                    shared_ptr<Indexer> indexer = mIndexer.lock();
-                    state = indexer && indexer->visitFile(fileId, this) ? Index : DontIndex;
-                }
-                if (state != Index) {
-                    *blocked = true;
-                    return Location();
-                }
-            }
+        if (file)
+            return createLocation(file, start, blocked);
+    }
+    if (blocked)
+        *blocked = false;
+    return Location();
+}
+
+Location IndexerJob::createLocation(CXFile file, unsigned off, bool *blocked)
+{
+    assert(file);
+    ByteArray fileName = RTags::eatString(clang_getFileName(file));
+    uint32_t &fileId = mFileIds[fileName];
+    if (!fileId)
+        fileId = Location::insertFile(Path::resolved(fileName));
+    Location ret = Location(fileId, off);
+    if (blocked) {
+        PathState &state = mPaths[fileId];
+        if (state == Unset) {
+            shared_ptr<Indexer> indexer = mIndexer.lock();
+            state = indexer && indexer->visitFile(fileId, this) ? Index : DontIndex;
+        }
+        if (state != Index) {
+            *blocked = true;
+            ret.clear();
+        } else {
+            *blocked = false;
         }
     }
     return ret;
@@ -448,8 +455,13 @@ void IndexerJob::indexDeclarations(CXClientData userData, const CXIdxDeclInfo *d
     CXFile f;
     unsigned o;
     clang_indexLoc_getFileLocation(decl->loc, 0, &f, 0, 0, &o);
-    const Location location(f, o);
+    if (!f)
+        return;
     IndexerJob *job = reinterpret_cast<IndexerJob*>(userData);
+    bool blocked;
+    const Location location = job->createLocation(f, o, &blocked);
+    if (blocked)
+        return;
     if (location.isNull() || job->mData->symbols.contains(location)) {
         // ### is this safe? Could I have gotten a reference to something before
         // ### the declaration?
@@ -549,12 +561,12 @@ void IndexerJob::indexEntityReferences(CXClientData userData, const CXIdxEntityR
         cursorInfo.target = refLoc;
     }
     CursorInfo &reffed = job->mData->symbols[refLoc];
-    if (!reffed.symbolLength) {
-        reffed.symbolName = cursorInfo.symbolName;
-        reffed.symbolLength = cursorInfo.symbolLength;
-        reffed.kind = ref->referencedEntity->kind;
-        // error() << "We had to make up a reference at" << refLoc << "for" << cursorInfo;
-    }
+    // if (!reffed.symbolLength) {
+    //     reffed.symbolName = cursorInfo.symbolName;
+    //     reffed.symbolLength = cursorInfo.symbolLength;
+    //     reffed.kind = ref->referencedEntity->kind;
+    //     // error() << "We had to make up a reference at" << refLoc << "for" << cursorInfo;
+    // }
     reffed.references.insert(location);
 }
 

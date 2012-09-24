@@ -47,6 +47,8 @@ private:
     virtual void run();
 
     Location createLocation(const CXCursor &cursor, bool *blocked = 0);
+    Location createLocation(CXFile file, unsigned off, bool *blocked = 0);
+
     ByteArray addNamePermutations(const CXCursor &cursor, const Location &location, bool addToDb);
     static CXChildVisitResult indexVisitor(CXCursor cursor, CXCursor parent, CXClientData client_data);
     static CXChildVisitResult verboseVisitor(CXCursor cursor, CXCursor, CXClientData userData);

@@ -89,6 +89,7 @@ static inline const char *kindToString(CXIdxEntityKind kind)
     case CXIdxEntity_CXXDestructor: return "CXXDestructor";
     case CXIdxEntity_CXXConversionFunction: return "CXXConversionFunction";
     case CXIdxEntity_CXXTypeAlias: return "CXXTypeAlias";
+    case CXIdxEntity_CXXInterface: return "CXXInterface";
     }
     return "";
 }
