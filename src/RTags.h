@@ -93,52 +93,6 @@ static inline const char *kindToString(CXIdxEntityKind kind)
     return "";
 }
 
-inline bool isReference(CXCursorKind kind)
-{
-    if (clang_isReference(kind))
-        return true;
-    switch (kind) {
-    case CXCursor_DeclRefExpr:
-    case CXCursor_UnexposedDecl:
-    case CXCursor_MacroExpansion:
-    case CXCursor_MemberRefExpr:
-    case CXCursor_CallExpr:
-        return true;
-    default:
-        break;
-    }
-    return false;
-}
-
-inline bool isCursor(CXCursorKind kind)
-{
-    switch (kind) {
-    case CXCursor_LabelStmt:
-    case CXCursor_MacroDefinition:
-        return true;
-    case CXCursor_CXXAccessSpecifier:
-        return false;
-    default:
-        break;
-    }
-    return clang_isDeclaration(kind);
-}
-
-static inline CursorType cursorType(CXCursorKind kind)
-{
-    if (clang_isStatement(kind)) {
-        return Other;
-    } else if (RTags::isCursor(kind)) {
-        return Cursor;
-    } else if (RTags::isReference(kind)) {
-        return Reference;
-    } else if (kind == CXCursor_InclusionDirective) {
-        return Include;
-    } else {
-        return Other;
-    }
-}
-
 ByteArray eatString(CXString str);
 enum CursorToStringFlags {
     NoCursorToStringFlags = 0x0,

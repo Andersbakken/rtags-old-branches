@@ -31,22 +31,7 @@ ByteArray cursorToString(CXCursor cursor, unsigned flags)
     ret.reserve(256);
     ret += eatString(clang_getCursorKindSpelling(kind));
 
-    switch (RTags::cursorType(kind)) {
-    case Reference:
-        ret += " r";
-        break;
-    case Cursor:
-        ret += " c";
-        break;
-    case Other:
-        ret += " o";
-        break;
-    case Include:
-        ret += " i";
-        break;
-    }
-
-    const ByteArray name = eatString(clang_getCursorDisplayName(cursor));
+   const ByteArray name = eatString(clang_getCursorDisplayName(cursor));
     const ByteArray other = eatString(clang_getCursorSpelling(cursor));
     if (!name.isEmpty())
         ret += " " + name;

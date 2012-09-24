@@ -25,10 +25,10 @@ void FollowLocationJob::run()
         SymbolMap::const_iterator target = RTags::findCursorInfo(map, cursorInfo.target);
         if (target != map.end() && !target->second.isDefinition) {
             switch (target->second.kind) {
-            case CXCursor_FunctionDecl:
-            case CXCursor_CXXMethod:
-            case CXCursor_Destructor:
-            case CXCursor_Constructor:
+            case CXIdxEntity_Function:
+            case CXIdxEntity_CXXInstanceMethod:
+            case CXIdxEntity_CXXDestructor:
+            case CXIdxEntity_CXXConstructor:
                 target = RTags::findCursorInfo(map, target->second.target);
                 if (target != map.end())
                     out = target->first;

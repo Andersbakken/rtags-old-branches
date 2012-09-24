@@ -36,14 +36,14 @@ void ReferencesJob::run()
                     pos = cursorInfo.target;
                     cursorInfo = RTags::findCursorInfo(map, cursorInfo.target, 0);
                 }
-                if (allReferences && (cursorInfo.kind == CXCursor_Constructor || cursorInfo.kind == CXCursor_Destructor)) {
+                if (allReferences && (cursorInfo.kind == CXIdxEntity_CXXConstructor || cursorInfo.kind == CXIdxEntity_CXXDestructor)) {
                     // In this case we have additional references that are the
                     // actual class and structs that we want to include. Also,
                     // we don't want to include actual calls to the constructor
                     // or destructor for renaming purposes.
                     for (Set<Location>::const_iterator rit = references.begin(); rit != references.end(); ++rit) {
                         const CursorInfo container = RTags::findCursorInfo(map, *rit, 0);
-                        if (container.kind == CXCursor_ClassDecl || container.kind == CXCursor_StructDecl) {
+                        if (container.kind == CXIdxEntity_CXXClass || container.kind == CXIdxEntity_Struct) {
                             process(map, *rit, container);
                             break;
                         }
@@ -119,15 +119,15 @@ void ReferencesJob::process(const SymbolMap &map, const Location &pos, const Cur
     bool constructorOrDestructor = false;
     bool memberFunction = false;
     switch (cursorInfo.kind) {
-    case CXCursor_CXXMethod:
+    case CXIdxEntity_CXXInstanceMethod:
         memberFunction = true;
         break;
-    case CXCursor_StructDecl:
-    case CXCursor_ClassDecl:
+    case CXIdxEntity_Struct:
+    case CXIdxEntity_CXXClass:
         classOrStruct = true;
         break;
-    case CXCursor_Constructor:
-    case CXCursor_Destructor:
+    case CXIdxEntity_CXXConstructor:
+    case CXIdxEntity_CXXDestructor:
         assert(!allReferences);
         constructorOrDestructor = true;
         break;
