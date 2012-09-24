@@ -198,7 +198,7 @@ int main(int argc, char **argv)
     const char* filename = (argc < 2 ? "test.cpp" : argv[1]);
 
     clang_indexSourceFile(action, 0, &cb, sizeof(IndexerCallbacks),
-                          CXIndexOpt_IndexFunctionLocalSymbols,
+                          CXIndexOpt_IndexFunctionLocalSymbols,//|CXIndexOpt_SuppressRedundantRefs,
                           filename,
                           args, sizeof(args) / sizeof(args[0]),
                           0, 0, &unit, clang_defaultEditingTranslationUnitOptions());

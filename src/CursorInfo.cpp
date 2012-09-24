@@ -6,7 +6,7 @@ ByteArray CursorInfo::toString() const
     ByteArray ret(16384, '\0');
     char *buf = ret.data();
     int pos = snprintf(buf, ret.size(), "CursorInfo(symbolLength: %u symbolName: %s kind: %s%s",
-                       symbolLength, symbolName.constData(), RTags::eatString(clang_getCursorKindSpelling(kind)).constData(),
+                       symbolLength, symbolName.constData(), RTags::kindToString(static_cast<CXIdxEntityKind>(kind)),
                        isDefinition ? " definition" : "");
     buf += pos;
     if (pos < ret.size() && target.isValid()) {

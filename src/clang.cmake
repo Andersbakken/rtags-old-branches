@@ -8,7 +8,7 @@ get_filename_component(PARENT_DIR ${CMAKE_CURRENT_LIST_DIR} PATH)
 include_directories(${clang_ROOT}/include)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(clang_LIBS
-    ${clang_ROOT}/lib/liblibclang.a
+    ${clang_ROOT}/lib/libclang.a
     ${clang_ROOT}/lib/libclangBasic.a
     ${clang_ROOT}/lib/libclangLex.a
     ${clang_ROOT}/lib/libclangParse.a
@@ -22,5 +22,5 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     ${clang_ROOT}/lib/libclangEdit.a
     ${clang_ROOT}/lib/libclangAnalysis.a)
 else()
-    set(clang_LIBS ${clang_ROOT}/lib/liblibclang.so)
+    set(clang_LIBS ${clang_ROOT}/lib/libclang.so)
 endif()

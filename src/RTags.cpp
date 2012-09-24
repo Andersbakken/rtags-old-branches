@@ -107,6 +107,20 @@ SymbolMap::const_iterator findCursorInfo(const SymbolMap &map, const Location &l
     return map.end();
 }
 
+CursorInfo findCursorInfo(const SymbolMap &map, const Location &location, Location *key)
+{
+    const SymbolMap::const_iterator it = findCursorInfo(map, location);
+    if (it == map.end()) {
+        if (key)
+            key->clear();
+        return CursorInfo();
+    }
+    if (key)
+        *key = it->first;
+    return it->second;
+}
+
+
 int canonicalizePath(char *path, int len)
 {
     assert(path[0] == '/');

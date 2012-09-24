@@ -6,17 +6,19 @@
 #include "Path.h"
 #include "Log.h"
 #include <clang-c/Index.h>
+#include "RTags.h"
 
 class CursorInfo
 {
 public:
+    enum { InvalidKind = -2, ReferenceKind = -1 };
     CursorInfo()
-        : symbolLength(0), kind(CXCursor_FirstInvalid), isDefinition(false)
+        : symbolLength(0), kind(InvalidKind), isDefinition(false)
     {}
     void clear()
     {
         symbolLength = 0;
-        kind = CXCursor_FirstInvalid;
+        kind = InvalidKind;
         isDefinition = false;
         target.clear();
         references.clear();
@@ -51,7 +53,7 @@ public:
 
     bool isEmpty() const
     {
-        assert((symbolLength || symbolName.isEmpty()) && (symbolLength || kind == CXCursor_FirstInvalid)); // these should be coupled
+        assert((symbolLength || symbolName.isEmpty()) && (symbolLength || kind == InvalidKind)); // these should be coupled
         return !symbolLength && !target && references.isEmpty();
     }
 
@@ -85,12 +87,22 @@ public:
         return changed;
     }
 
+    const char *kindSpelling() const
+    {
+        return RTags::kindToString(static_cast<CXIdxEntityKind>(kind));
+    }
+
+    bool isReference() const
+    {
+        return kind == ReferenceKind;
+    }
+
     ByteArray toString() const;
 
-    unsigned char symbolLength; // this is just the symbol name length e.g. foo => 3
     ByteArray symbolName; // this is fully qualified Foobar::Barfoo::foo
-    CXCursorKind kind;
-    bool isDefinition;
+    int symbolLength : 8; // this is just the symbol name length e.g. foo => 3
+    int kind : 15; // -1 means reference, -2 means invalid
+    bool isDefinition : 1;
     Location target;
     Set<Location> references;
 };

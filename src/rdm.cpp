@@ -63,6 +63,7 @@ void usage(FILE *f)
 
 int main(int argc, char** argv)
 {
+    setenv("LIBCLANG_NOTHREADS", "1", 1);
     RTags::findApplicationDirPath(*argv);
 
     struct option opts[] = {

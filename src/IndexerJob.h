@@ -10,7 +10,6 @@
 #include <clang-c/Index.h>
 
 struct IndexData {
-    ReferenceMap references;
     SymbolMap symbols;
     SymbolNameMap symbolNames;
     DependencyMap dependencies;
@@ -47,21 +46,16 @@ private:
 
     virtual void run();
 
-    Location createLocation(const CXCursor &cursor, bool *blocked);
-    static Location createLocation(const CXCursor &cursor);
+    Location createLocation(const CXCursor &cursor, bool *blocked = 0);
     ByteArray addNamePermutations(const CXCursor &cursor, const Location &location, bool addToDb);
     static CXChildVisitResult indexVisitor(CXCursor cursor, CXCursor parent, CXClientData client_data);
     static CXChildVisitResult verboseVisitor(CXCursor cursor, CXCursor, CXClientData userData);
     static CXChildVisitResult dumpVisitor(CXCursor cursor, CXCursor, CXClientData userData);
-
+    static void indexDeclarations(CXClientData, const CXIdxDeclInfo *decl);
+    static void indexEntityReferences(CXClientData, const CXIdxEntityRefInfo *ref);
     static void inclusionVisitor(CXFile included_file, CXSourceLocation *include_stack,
                                  unsigned include_len, CXClientData client_data);
 
-    void handleCursor(const CXCursor &cursor, CXCursorKind kind, const Location &location, const Location *refLoc = 0);
-    void handleReference(const CXCursor &cursor, CXCursorKind kind, const Location &loc,
-                         const CXCursor &ref, CXCursorKind refKind, const CXCursor &parent);
-    void handleInclude(const CXCursor &cursor, CXCursorKind kind, const Location &location);
-    Location findByUSR(const CXCursor &cursor, CXCursorKind kind, const Location &loc) const;
     void addOverriddenCursors(const CXCursor& cursor, const Location& location, List<CursorInfo*>& infos);
 
     unsigned mFlags;

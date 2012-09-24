@@ -115,6 +115,11 @@ public:
         append(t);
         return *this;
     }
+
+    const T *constData() const
+    {
+        return std::vector<T>::data();
+    }
 };
 
 #endif

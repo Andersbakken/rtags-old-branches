@@ -2,7 +2,6 @@
 #define RTags_h
 
 #include "ByteArray.h"
-#include "CursorInfo.h"
 #include "Location.h"
 #include "Log.h"
 #include "Path.h"
@@ -44,7 +43,6 @@ enum CursorType {
 
 class CursorInfo;
 typedef Map<Location, CursorInfo> SymbolMap;
-typedef Map<Location, Map<Location, RTags::ReferenceType> > ReferenceMap;
 typedef Map<ByteArray, Set<Location> > SymbolNameMap;
 typedef Map<uint32_t, Set<uint32_t> > DependencyMap;
 typedef Map<uint32_t, List<ByteArray> > CompileArgumentsMap;
@@ -61,6 +59,39 @@ void dirtySymbolNames(SymbolNameMap &map, const Set<uint32_t> &dirty);
 void dirtySymbols(SymbolMap &map, const Set<uint32_t> &dirty);
 
 ByteArray backtrace(int maxFrames = -1);
+
+static inline const char *kindToString(CXIdxEntityKind kind)
+{
+    switch (kind) {
+    case CXIdxEntity_Unexposed: return "Unexposed";
+    case CXIdxEntity_Typedef: return "Typedef";
+    case CXIdxEntity_Function: return "Function";
+    case CXIdxEntity_Variable: return "Variable";
+    case CXIdxEntity_Field: return "Field";
+    case CXIdxEntity_EnumConstant: return "EnumConstant";
+    case CXIdxEntity_ObjCClass: return "ObjCClass";
+    case CXIdxEntity_ObjCProtocol: return "ObjCProtocol";
+    case CXIdxEntity_ObjCCategory: return "ObjCCategory";
+    case CXIdxEntity_ObjCInstanceMethod: return "ObjCInstanceMethod";
+    case CXIdxEntity_ObjCClassMethod: return "ObjCClassMethod";
+    case CXIdxEntity_ObjCProperty: return "ObjCProperty";
+    case CXIdxEntity_ObjCIvar: return "ObjCIvar";
+    case CXIdxEntity_Enum: return "Enum";
+    case CXIdxEntity_Struct: return "Struct";
+    case CXIdxEntity_Union: return "Union";
+    case CXIdxEntity_CXXClass: return "CXXClass";
+    case CXIdxEntity_CXXNamespace: return "CXXNamespace";
+    case CXIdxEntity_CXXNamespaceAlias: return "CXXNamespaceAlias";
+    case CXIdxEntity_CXXStaticVariable: return "CXXStaticVariable";
+    case CXIdxEntity_CXXStaticMethod: return "CXXStaticMethod";
+    case CXIdxEntity_CXXInstanceMethod: return "CXXInstanceMethod";
+    case CXIdxEntity_CXXConstructor: return "CXXConstructor";
+    case CXIdxEntity_CXXDestructor: return "CXXDestructor";
+    case CXIdxEntity_CXXConversionFunction: return "CXXConversionFunction";
+    case CXIdxEntity_CXXTypeAlias: return "CXXTypeAlias";
+    }
+    return "";
+}
 
 inline bool isReference(CXCursorKind kind)
 {
@@ -145,18 +176,7 @@ inline bool addTo(Container &container, const Value &value)
 }
 
 SymbolMap::const_iterator findCursorInfo(const SymbolMap &map, const Location &location);
-inline CursorInfo findCursorInfo(const SymbolMap &map, const Location &location, Location *key)
-{
-    const SymbolMap::const_iterator it = findCursorInfo(map, location);
-    if (it == map.end()) {
-        if (key)
-            key->clear();
-        return CursorInfo();
-    }
-    if (key)
-        *key = it->first;
-    return it->second;
-}
+CursorInfo findCursorInfo(const SymbolMap &map, const Location &location, Location *key);
 
 enum TimeFormat {
     DateTime,

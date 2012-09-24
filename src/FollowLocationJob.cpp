@@ -21,7 +21,7 @@ void FollowLocationJob::run()
         return;
 
     Location out = cursorInfo.target;
-    if (RTags::isReference(cursorInfo.kind)) {
+    if (cursorInfo.kind == CursorInfo::ReferenceKind) {
         SymbolMap::const_iterator target = RTags::findCursorInfo(map, cursorInfo.target);
         if (target != map.end() && !target->second.isDefinition) {
             switch (target->second.kind) {

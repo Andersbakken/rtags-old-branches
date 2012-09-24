@@ -32,7 +32,7 @@ void ReferencesJob::run()
                 Location pos;
                 CursorInfo cursorInfo = RTags::findCursorInfo(map, *it, &pos);
                 startLocation = pos;
-                if (RTags::isReference(cursorInfo.kind)) {
+                if (cursorInfo.isReference()) {
                     pos = cursorInfo.target;
                     cursorInfo = RTags::findCursorInfo(map, cursorInfo.target, 0);
                 }
@@ -136,7 +136,7 @@ void ReferencesJob::process(const SymbolMap &map, const Location &pos, const Cur
     }
 
     // error() << pos << cursorInfo << "allReferences" << allReferences;
-    assert(!RTags::isReference(cursorInfo.kind));
+    assert(!cursorInfo.isReference());
     if (allReferences)
         references.insert(pos);
     if (memberFunction) {
@@ -145,7 +145,7 @@ void ReferencesJob::process(const SymbolMap &map, const Location &pos, const Cur
             // since member functions can have other reimplementations of the
             // same virtual function in their references we have to make sure
             // it's an actual reference before adding it.
-            if (RTags::isReference(ci.kind)) {
+            if (ci.isReference()) {
                 references.insert(*it);
             } else {
                 additional.insert(*it);
@@ -162,7 +162,7 @@ void ReferencesJob::process(const SymbolMap &map, const Location &pos, const Cur
             //
             // In the case of constructor initalizer lists the actual type is
             // CXCursor_MemberRef so it returns true for RTags::isReference.
-            if (RTags::isReference(ci.kind) || (cursorInfo.kind == CXCursor_Constructor && ci.kind == CXCursor_VarDecl)) {
+            if (ci.isReference() || (cursorInfo.kind == CXIdxEntity_CXXConstructor && ci.kind == CXIdxEntity_Variable)) {
                 references.insert(*it);
             }
         }
