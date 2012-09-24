@@ -440,7 +440,7 @@ void IndexerJob::run()
 
 void IndexerJob::indexDeclarations(CXClientData userData, const CXIdxDeclInfo *decl)
 {
-    if (!decl->entityInfo->name) {
+    if (!decl->entityInfo->name || !*decl->entityInfo->name) {
         // Could maybe do better with this but I want to keep it simple for now
         return;
     }
