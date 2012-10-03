@@ -13,42 +13,67 @@ class Serializer
 {
 public:
     Serializer(ByteArray &out)
-        : mOut(out)
+        : mOut(&out), mOutFile(0)
     {}
-    void write(const char *data, int len)
+
+    Serializer(FILE *f)
+        : mOut(0), mOutFile(f)
     {
-        mOut.append(data, len);
+        assert(f);
     }
-    int size() const { return mOut.size(); }
+    bool write(const char *data, int len)
+    {
+        if (mOut) {
+            mOut->append(data, len);
+            return true;
+        } else {
+            assert(mOutFile);
+            const size_t ret = fwrite(data, sizeof(char), len, mOutFile);
+            return (ret == len);
+        }
+    }
 private:
-    ByteArray &mOut;
+    ByteArray *mOut;
+    FILE *mOutFile;
 };
 
 class Deserializer
 {
 public:
     Deserializer(const char *data, int length)
-        : mData(data), mLength(length), mPos(0)
+        : mData(data), mLength(length), mPos(0), mFile(0)
     {}
-    void read(char *target, int len)
+
+    Deserializer(FILE *file)
+        : mData(0), mLength(0), mFile(file)
     {
-        assert(mPos + len <= mLength);
-        memcpy(target, mData + mPos, len);
-        mPos += len;
+        assert(file);
+    }
+    int read(char *target, int len)
+    {
+        if (mData) {
+            len = std::min(mLength - mPos, len);
+            if (len <= 0)
+                return 0;
+            assert(mPos + len <= mLength);
+            memcpy(target, mData + mPos, len);
+            mPos += len;
+            return len;
+        } else {
+            assert(mFile);
+            return fread(target, sizeof(char), len, mFile);
+        }
     }
 
     int pos() const
     {
         return mPos;
     }
-    int size() const
-    {
-        return mLength;
-    }
 private:
     const char *mData;
     const int mLength;
     int mPos;
+    FILE *mFile;
 };
 
 template <typename T>
@@ -65,7 +90,10 @@ Deserializer &operator>>(Deserializer &s, T &t)
     return s;
 }
 
-template <typename T> inline int fixedSize(const T &) { return 0; }
+template <typename T> inline int fixedSize(const T &)
+{
+    return 0;
+}
 #define DECLARE_NATIVE_TYPE(type)                                       \
     template <> inline int fixedSize(const type &)                      \
     {                                                                   \

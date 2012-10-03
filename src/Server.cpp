@@ -49,7 +49,7 @@ public:
 
 Server *Server::sInstance = 0;
 Server::Server()
-    : mServer(0), mVerbose(false), mJobId(0), mThreadPool(0)
+    : mServer(0), mVerbose(false), mJobId(0), mThreadPool(0), mSaveTimerId(-1)
 {
     assert(!sInstance);
     sInstance = this;
@@ -435,7 +435,7 @@ void Server::dumpFile(const QueryMessage &query, Connection *conn)
         conn->finish();
         return;
     }
-    const SourceInformation c = project->indexer->compileArguments(fileId);
+    const SourceInformation c = project->indexer->sourceInfo(fileId);
     if (c.args.isEmpty()) {
         conn->write<256>("%s is not indexed", query.query().constData());
         conn->finish();
@@ -610,7 +610,7 @@ void Server::preprocessFile(const QueryMessage &query, Connection *conn)
     }
 
     const uint32_t fileId = Location::fileId(path);
-    const SourceInformation c = project->indexer->compileArguments(fileId);
+    const SourceInformation c = project->indexer->sourceInfo(fileId);
     if (c.args.isEmpty()) {
         conn->write("No arguments for " + path);
         conn->finish();
@@ -848,11 +848,11 @@ bool Server::processSourceFile(const GccArguments &args, const Path &proj)
     List<ByteArray> arguments = args.clangArgs();
     arguments.append(mOptions.defaultArguments);
 
-    SourceInformation c = { Path(), arguments, args.compiler() };
+    SourceInformation c(Path(), arguments, args.compiler());
     for (int i=0; i<count; ++i) {
         c.sourceFile = inputFiles.at(i);
 
-        const SourceInformation existing = project->indexer->compileArguments(Location::insertFile(c.sourceFile));
+        const SourceInformation existing = project->indexer->sourceInfo(Location::insertFile(c.sourceFile));
         if (existing != c) {
             project->indexer->index(c, IndexerJob::Makefile);
         } else {
@@ -904,7 +904,7 @@ void Server::event(const Event *event)
 
 shared_ptr<Project> Server::setCurrentProject(const Path &path)
 {
-    Map<Path, shared_ptr<Project> >::const_iterator it = mProjects.find(path);
+    ProjectsMap::const_iterator it = mProjects.find(path);
     if (it != mProjects.end()) {
         setCurrentProject(it->second);
         return it->second;
@@ -921,7 +921,7 @@ bool Server::updateProjectForLocation(const Path &path, Path *key)
 {
     shared_ptr<Project> match;
     int longest = -1;
-    for (Map<Path, shared_ptr<Project> >::const_iterator it = mProjects.begin(); it != mProjects.end(); ++it) {
+    for (ProjectsMap::const_iterator it = mProjects.begin(); it != mProjects.end(); ++it) {
         if (!strncmp(it->second->srcRoot.constData(), path.constData(), it->second->srcRoot.size())) {
             const int matchLength = it->second->srcRoot.size();
             if (matchLength > longest) {
@@ -978,7 +978,7 @@ void Server::writeProjects()
 
 void Server::removeProject(const Path &path)
 {
-    Map<Path, shared_ptr<Project> >::iterator it = mProjects.find(path);
+    ProjectsMap::iterator it = mProjects.find(path);
     if (it == mProjects.end())
         return;
     bool write = false;
@@ -1067,6 +1067,8 @@ bool Server::smartProject(const Path &path, const List<ByteArray> &extraCompiler
     shared_ptr<Project> &project = mProjects[path];
     project.reset(new Project(path));
     project->indexer.reset(new Indexer(project, !(mOptions.options & NoValidate)));
+    project->indexer->jobsComplete().connect(this, &Server::onJobsComplete);
+    project->indexer->jobStarted().connect(this, &Server::onJobStarted);
     project->indexer->beginMakefile();
     project->fileManager.reset(new FileManager);
     project->fileManager->init(project);
@@ -1096,7 +1098,7 @@ void Server::deleteProject(const QueryMessage &query, Connection *conn)
 {
     RegExp rx(query.query());
     Set<Path> remove;
-    for (Map<Path, shared_ptr<Project> >::iterator it = mProjects.begin(); it != mProjects.end(); ++it) {
+    for (ProjectsMap::iterator it = mProjects.begin(); it != mProjects.end(); ++it) {
         if (rx.indexIn(it->first) != -1)
             remove.insert(it->first);
     }
@@ -1111,7 +1113,7 @@ void Server::project(const QueryMessage &query, Connection *conn)
 {
     if (query.query().isEmpty()) {
         shared_ptr<Project> current = currentProject();
-        for (Map<Path, shared_ptr<Project> >::const_iterator it = mProjects.begin(); it != mProjects.end(); ++it) {
+        for (ProjectsMap::const_iterator it = mProjects.begin(); it != mProjects.end(); ++it) {
             conn->write<128>("%s%s",
                              it->first.constData(),
                              it->second == current ? " <=" : "");
@@ -1125,7 +1127,7 @@ void Server::project(const QueryMessage &query, Connection *conn)
             conn->write<128>("Selected project: %s", key.constData());
         } else {
             RegExp rx(query.query());
-            for (Map<Path, shared_ptr<Project> >::const_iterator it = mProjects.begin(); it != mProjects.end(); ++it) {
+            for (ProjectsMap::const_iterator it = mProjects.begin(); it != mProjects.end(); ++it) {
                 const Path *paths[] = { &it->first, &it->second->srcRoot, &it->second->resolvedSrcRoot, 0 };
                 if (paths[2]->isEmpty())
                     paths[2] = 0;
@@ -1166,4 +1168,75 @@ void Server::shutdown(const QueryMessage &query, Connection *conn)
     EventLoop::instance()->exit();
     conn->write("Shutting down");
     conn->finish();
+}
+
+void Server::save()
+{
+    Timer timer;
+    Path path = ByteArray::snprintf<128>("%s/.rtags/", Path::home().constData());
+    if (!Path::mkdir(path)) {
+        error("Can't create directory [%s]", path.constData());
+        return;
+    }
+    {
+        const Path p = path + "fileids";
+        FILE *f = fopen(p.constData(), "w");
+        if (!f) {
+            error("Can't open file %s", p.constData());
+            return;
+        }
+        const Map<Path, uint32_t> pathsToIds = Location::pathsToIds();
+        Serializer out(f);
+        out << pathsToIds;
+        fclose(f);
+    }
+    for (ProjectsMap::const_iterator it = mProjects.begin(); it != mProjects.end(); ++it) {
+        if (!it->second->indexer)
+            continue;
+        Path makeFilePath = it->first;
+        RTags::encodePath(makeFilePath);
+        const Path p = path + makeFilePath;
+        FILE *f = fopen(p.constData(), "w");
+        if (!f) {
+            error("Can't open file %s", p.constData());
+            return;
+        }
+        Serializer out(f);
+        if (!it->second->save(out)) {
+            error("Can't save project %s", it->first.constData());
+            fclose(f);
+            return;
+        }
+        if (!it->second->indexer->save(out)) {
+            error("Can't save project %s", it->first.constData());
+            fclose(f);
+            return;
+        }
+        fclose(f);
+    }
+    error() << "Saved data in" << timer.elapsed() << "ms";
+}
+
+void Server::onJobsComplete(Indexer *)
+{
+    printf("[%s] %s:%d: void Server::onJobsComplete(Indexer *) [after]\n", __func__, __FILE__, __LINE__);
+    if (mSaveTimerId != -1)
+        EventLoop::instance()->removeTimer(mSaveTimerId);
+    enum { SaveTimerInterval = 5000 };
+    mSaveTimerId = EventLoop::instance()->addTimer(SaveTimerInterval, Server::saveTimerCallback, this);
+}
+void Server::saveTimerCallback(int id, void *userData)
+{
+    printf("[%s] %s:%d: void Server::saveTimerCallback(int id, void *userData) [after]\n", __func__, __FILE__, __LINE__);
+    EventLoop::instance()->removeTimer(id);
+    static_cast<Server*>(userData)->save();
+    // ### should maybe not do this in the main thread
+}
+void Server::onJobStarted(Indexer *, const Path &path)
+{
+    error() << path.constData() << "started";
+    if (mSaveTimerId != -1) {
+        EventLoop::instance()->removeTimer(mSaveTimerId);
+        mSaveTimerId = -1;
+    }
 }
