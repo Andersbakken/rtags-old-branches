@@ -9,13 +9,13 @@
 class ValidateDBJob : public Job
 {
 public:
-    ValidateDBJob(const std::shared_ptr<Project> &proj, const Set<Location> &prev);
-    signalslot::Signal1<const Set<Location> &> &errors() { return mErrors; }
+    ValidateDBJob(const std::shared_ptr<Project> &proj, const Set<ByteArray> &prev);
+    signalslot::Signal1<const Set<ByteArray> &> &errors() { return mErrors; }
 protected:
     virtual void execute();
 private:
-    const Set<Location> mPrevious;
-    signalslot::Signal1<const Set<Location> &> mErrors;
+    const Set<ByteArray> mPrevious;
+    signalslot::Signal1<const Set<ByteArray> &> mErrors;
 
 };
 

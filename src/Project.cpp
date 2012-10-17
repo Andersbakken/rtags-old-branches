@@ -152,5 +152,74 @@ bool Project::restore(Deserializer &in)
     }
 
     return true;
+}
 
+Location Project::findLocation(const ByteArray &usr)
+{
+    if (!usr.isEmpty()) {
+        Scope<const SymbolMap &> scope = lockSymbolsForRead();
+        const SymbolMap &map = scope.data();
+        const SymbolMap::const_iterator it = map.find(usr);
+        if (it != map.end())
+            return it->second.location;
+    }
+    return Location();
+}
+
+
+ByteArray Project::findUsr(const Location &location)
+{
+    if (!indexer)
+        return ByteArray();
+    Scope<const UsrMap &> scope = lockUsrForRead();
+    const UsrMap &map = scope.data();
+
+    UsrMap::const_iterator it = map.find(location);
+    if (it != map.end())
+        return it->second.first;
+    it = map.lower_bound(location);
+    if (it == map.end()) {
+        --it;
+    } else {
+        const int cmp = it->first.compare(location);
+        if (!cmp) {
+            assert(0);
+            // ### Don't think this should ever happen given the find above,
+            // ### we could probably also assume that if (it > location) we've
+            // ### already lost
+            return it->second.first;
+        }
+        --it;
+    }
+    if (location.fileId() != it->first.fileId())
+        return map.end();
+    const int off = location.offset() - it->first.offset();
+    if (it->second.second > off) // ### should this be >=
+        return it->second.first;
+    return ByteArray();
+}
+
+CursorInfo Project::findCursorInfo(const Location &location)
+{
+    const ByteArray usr = findUsr(location);
+    if (!usr.isEmpty()) {
+        Scope<const SymbolMap &> scope = lockSymbolsForRead();
+        const SymbolMap &map = scope.data();
+        const SymbolMap::const_iterator it = map.find(usr);
+        if (it != map.end())
+            return it->second;
+    }
+    return CursorInfo();
+}
+
+static ThreadLocal<std::weak_ptr<Project> > sCurrentProject;
+
+void Project::makeCurrent()
+{
+    sCurrentProject.set(shared_from_this());
+}
+
+std::shared_ptr<Project> Project::current()
+{
+    return sCurrentProject.get();
 }

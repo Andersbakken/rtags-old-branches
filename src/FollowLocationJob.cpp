@@ -10,22 +10,20 @@ FollowLocationJob::FollowLocationJob(const Location &loc, const QueryMessage &qu
 
 void FollowLocationJob::execute()
 {
+    std::shared_ptr<Project> proj = project();
+    if (!proj)
+        return;
+    const CursorInfo cursorInfo = proj->findCursorInfo(location);
+    if (cursorInfo.isEmpty() || (cursorInfo.isClass() && cursorInfo.isDefinition))
+        return;
+
     Scope<const SymbolMap&> scope = project()->lockSymbolsForRead();
+    const SymbolMap &map = scope.data();
     if (scope.isNull())
         return;
 
-    const SymbolMap &map = scope.data();
-    const SymbolMap::const_iterator it = RTags::findCursorInfo(map, location);
-    if (it == map.end())
-        return;
-
-    const CursorInfo &cursorInfo = it->second;
-    if (cursorInfo.isClass() && cursorInfo.isDefinition)
-        return;
-
-    Location loc;
-    CursorInfo target = cursorInfo.bestTarget(map, &loc);
-    if (!loc.isNull()) {
+    CursorInfo target = cursorInfo.bestTarget(map);
+    if (!target.isNull()) {
         if (cursorInfo.kind != target.kind) {
             if (!target.isDefinition && !target.targets.isEmpty()) {
                 switch (target.kind) {
@@ -36,15 +34,15 @@ void FollowLocationJob::execute()
                 case CXCursor_CXXMethod:
                 case CXCursor_Destructor:
                 case CXCursor_Constructor:
-                    target = target.bestTarget(map, &loc);
+                    target = target.bestTarget(map);
                     break;
                 default:
                     break;
                 }
             }
         }
-        if (!loc.isNull()) {
-            write(loc.key(keyFlags()));
+        if (!target.isNull()) {
+            write(target.location.key(keyFlags()));
         }
     }
 }

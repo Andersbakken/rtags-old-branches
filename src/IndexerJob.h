@@ -33,7 +33,7 @@ public:
     IndexerJob(const QueryMessage &msg, const std::shared_ptr<Project> &project,
                const Path &input, const List<ByteArray> &arguments);
 
-    int priority() const { return mFlags & Priorities; }
+    int priority() const { return mFlags &Priorities; }
     std::shared_ptr<IndexData> data() const { return mData; }
     uint32_t fileId() const { return mFileId; }
     Path path() const { return mPath; }
@@ -63,7 +63,8 @@ private:
     void handleReference(const CXCursor &cursor, CXCursorKind kind, const Location &loc, const CXCursor &reference);
     void handleInclude(const CXCursor &cursor, CXCursorKind kind, const Location &location);
     Location findByUSR(const CXCursor &cursor, CXCursorKind kind, const Location &loc) const;
-    void addOverriddenCursors(const CXCursor& cursor, const Location& location, List<CursorInfo*>& infos);
+    void addOverriddenCursors(const CXCursor &cursor, const ByteArray &usr, List<CursorInfo*> &infos);
+    ByteArray usrForLocation(const Location &location, const CXCursor &cursor);
 
     unsigned mFlags;
     time_t mTimeStamp;
@@ -95,6 +96,8 @@ private:
     bool mDump;
 
     time_t mParseTime;
+
+    Map<Location, ByteArray> mUsr;
 
     bool mStarted;
 };

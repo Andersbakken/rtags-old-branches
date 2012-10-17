@@ -40,7 +40,7 @@ public:
         DontQuote = 0x2
     };
     bool write(const ByteArray &out, unsigned flags = NoWriteFlags);
-    bool write(const Location &location, const CursorInfo &info, unsigned flags = NoWriteFlags);
+    bool write(const CursorInfo &info, unsigned flags = NoWriteFlags);
     template <int StaticBufSize> bool write(unsigned flags, const char *format, ...);
     template <int StaticBufSize> bool write(const char *format, ...);
     unsigned jobFlags() const { return mJobFlags; }

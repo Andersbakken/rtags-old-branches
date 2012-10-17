@@ -34,7 +34,7 @@ private:
 class Indexer;
 class FileManager;
 class GRTags;
-class Project
+class Project : public std::enable_shared_from_this<Project>
 {
 public:
     Project(const Path &src);
@@ -68,6 +68,14 @@ public:
 
     bool save(Serializer &out);
     bool restore(Deserializer &in);
+
+    CursorInfo findCursorInfo(const Location &location);
+
+    ByteArray findUsr(const Location &location);
+    Location findLocation(const ByteArray &usr);
+
+    void makeCurrent();
+    static std::shared_ptr<Project> currentProjectForThread();
 private:
     SymbolMap mSymbols;
     ReadWriteLock mSymbolsLock;

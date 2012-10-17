@@ -1,11 +1,13 @@
 #include "CursorInfo.h"
 #include "RTagsClang.h"
+#include "Project.h"
 
 ByteArray CursorInfo::toString(unsigned keyFlags) const
 {
     ByteArray ret(16384, '\0');
     char *buf = ret.data();
-    int pos = snprintf(buf, ret.size(), "CursorInfo(%ssymbolLength: %u symbolName: %s usr: %s kind: %s%s",
+    int pos = snprintf(buf, ret.size(), "%s CursorInfo(%ssymbolLength: %u symbolName: %s usr: %s kind: %s%s",
+                       location.key(keyFlags).constData(),
                        start != -1 && end != -1 ? ByteArray::snprintf<16>("%d-%d ", start, end).constData() : "",
                        symbolLength, symbolName.constData(), usr.constData(),
                        RTags::eatString(clang_getCursorKindSpelling(kind)).constData(),
@@ -16,11 +18,24 @@ ByteArray CursorInfo::toString(unsigned keyFlags) const
         int w = snprintf(buf, ret.size() - pos, " targets:\n");
         pos += w;
         buf += w;
-        for (Set<Location>::const_iterator tit = targets.begin(); tit != targets.end() && w < ret.size(); ++tit) {
-            const Location &l = *tit;
-            w = snprintf(buf, ret.size() - pos, "    %s\n", l.key(keyFlags).constData());
-            buf += w;
-            pos += w;
+        for (Set<ByteArray>::const_iterator tit = targets.begin(); tit != targets.end() && w < ret.size(); ++tit) {
+            std::shared_ptr<Project> proj = Project::currentProjectForThread();
+            if (proj) {
+                const Location l = proj->findLocation(*tit);
+                if (!l.isNull()) {
+                    w = snprintf(buf, ret.size() - pos, "    %s\n", l.key(keyFlags).constData());
+                    buf += w;
+                    pos += w;
+                } else {
+                    w = snprintf(buf, ret.size() - pos, "    invalid target %s \n", tit->constData());
+                    buf += w;
+                    pos += w;
+                }
+            } else {
+                w = snprintf(buf, ret.size() - pos, "    %s\n", tit->constData());
+                buf += w;
+                pos += w;
+            }
         }
     }
 
@@ -28,11 +43,24 @@ ByteArray CursorInfo::toString(unsigned keyFlags) const
         int w = snprintf(buf, ret.size() - pos, " references:\n");
         pos += w;
         buf += w;
-        for (Set<Location>::const_iterator rit = references.begin(); rit != references.end() && w < ret.size(); ++rit) {
-            const Location &l = *rit;
-            w = snprintf(buf, ret.size() - pos, "    %s\n", l.key(keyFlags).constData());
-            buf += w;
-            pos += w;
+        for (Set<ByteArray>::const_iterator rit = references.begin(); rit != references.end() && w < ret.size(); ++rit) {
+            std::shared_ptr<Project> proj = Project::currentProjectForThread();
+            if (proj) {
+                const Location l = proj->findLocation(*rit);
+                if (!l.isNull()) {
+                    w = snprintf(buf, ret.size() - pos, "    %s\n", l.key(keyFlags).constData());
+                    buf += w;
+                    pos += w;
+                } else {
+                    w = snprintf(buf, ret.size() - pos, "    invalid target %s \n", rit->constData());
+                    buf += w;
+                    pos += w;
+                }
+            } else {
+                w = snprintf(buf, ret.size() - pos, "    %s\n", rit->constData());
+                buf += w;
+                pos += w;
+            }
         }
     }
     ret.truncate(pos);
@@ -55,7 +83,7 @@ int CursorInfo::cursorRank(CXCursorKind kind)
     }
 }
 
-CursorInfo CursorInfo::bestTarget(const SymbolMap &map, Location *loc) const
+CursorInfo CursorInfo::bestTarget(const SymbolMap &map) const
 {
     const SymbolMap targets = targetInfos(map);
 
@@ -70,8 +98,6 @@ CursorInfo CursorInfo::bestTarget(const SymbolMap &map, Location *loc) const
         }
     }
     if (best != targets.end()) {
-        if (loc)
-            *loc = best->first;
         return best->second;
     }
     return CursorInfo();
@@ -80,8 +106,8 @@ CursorInfo CursorInfo::bestTarget(const SymbolMap &map, Location *loc) const
 SymbolMap CursorInfo::targetInfos(const SymbolMap &map) const
 {
     SymbolMap ret;
-    for (Set<Location>::const_iterator it = targets.begin(); it != targets.end(); ++it) {
-        SymbolMap::const_iterator found = RTags::findCursorInfo(map, *it);
+    for (Set<ByteArray>::const_iterator it = targets.begin(); it != targets.end(); ++it) {
+        const SymbolMap::const_iterator found = map.find(*it);
         if (found != map.end()) {
             ret[*it] = found->second;
         } else {
@@ -96,8 +122,8 @@ SymbolMap CursorInfo::targetInfos(const SymbolMap &map) const
 SymbolMap CursorInfo::referenceInfos(const SymbolMap &map) const
 {
     SymbolMap ret;
-    for (Set<Location>::const_iterator it = references.begin(); it != references.end(); ++it) {
-        SymbolMap::const_iterator found = RTags::findCursorInfo(map, *it);
+    for (Set<ByteArray>::const_iterator it = references.begin(); it != references.end(); ++it) {
+        const SymbolMap::const_iterator found = map.find(*it);
         if (found != map.end()) {
             ret[*it] = found->second;
         }
@@ -105,14 +131,14 @@ SymbolMap CursorInfo::referenceInfos(const SymbolMap &map) const
     return ret;
 }
 
-SymbolMap CursorInfo::callers(const Location &loc, const SymbolMap &map) const
+SymbolMap CursorInfo::callers(const SymbolMap &map) const
 {
     assert(!RTags::isReference(kind));
     SymbolMap ret;
-    const SymbolMap cursors = virtuals(loc, map);
+    const SymbolMap cursors = virtuals(map);
     for (SymbolMap::const_iterator c = cursors.begin(); c != cursors.end(); ++c) {
-        for (Set<Location>::const_iterator it = c->second.references.begin(); it != c->second.references.end(); ++it) {
-            const SymbolMap::const_iterator found = RTags::findCursorInfo(map, *it);
+        for (Set<ByteArray>::const_iterator it = c->second.references.begin(); it != c->second.references.end(); ++it) {
+            const SymbolMap::const_iterator found = map.find(*it);
             if (found == map.end())
                 continue;
             if (RTags::isReference(found->second.kind)) { // is this always right?
@@ -131,11 +157,10 @@ enum Mode {
     NormalRefs
 };
 
-static inline void allImpl(const SymbolMap &map, const Location &loc, const CursorInfo &info, SymbolMap &out, Mode mode, CXCursorKind kind)
+static inline void allImpl(const SymbolMap &map, const CursorInfo &info, SymbolMap &out, Mode mode, CXCursorKind kind)
 {
-    if (out.contains(loc))
+    if (!out.insert(info.usr, info))
         return;
-    out[loc] = info;
     typedef SymbolMap (CursorInfo::*Function)(const SymbolMap &map) const;
     const SymbolMap targets = info.targetInfos(map);
     for (SymbolMap::const_iterator t = targets.begin(); t != targets.end(); ++t) {
@@ -152,7 +177,7 @@ static inline void allImpl(const SymbolMap &map, const Location &loc, const Curs
             break;
         }
         if (ok)
-            allImpl(map, t->first, t->second, out, mode, kind);
+            allImpl(map, t->second, out, mode, kind);
     }
     const SymbolMap refs = info.referenceInfos(map);
     for (SymbolMap::const_iterator r = refs.begin(); r != refs.end(); ++r) {
@@ -162,7 +187,7 @@ static inline void allImpl(const SymbolMap &map, const Location &loc, const Curs
             break;
         case VirtualRefs:
             if (r->second.kind == kind) {
-                allImpl(map, r->first, r->second, out, mode, kind);
+                allImpl(map, r->second, out, mode, kind);
             } else {
                 out[r->first] = r->second;
             }
@@ -173,13 +198,13 @@ static inline void allImpl(const SymbolMap &map, const Location &loc, const Curs
             if (r->second.isClass()
                 || r->second.kind == CXCursor_Destructor
                 || r->second.kind == CXCursor_Constructor) { // if is a constructor/destructor/class reference we want to recurse it
-                allImpl(map, r->first, r->second, out, mode, kind);
+                allImpl(map, r->second, out, mode, kind);
             }
         }
     }
 }
 
-SymbolMap CursorInfo::allReferences(const Location &loc, const SymbolMap &map) const
+SymbolMap CursorInfo::allReferences(const SymbolMap &map) const
 {
     SymbolMap ret;
     Mode mode = NormalRefs;
@@ -196,15 +221,15 @@ SymbolMap CursorInfo::allReferences(const Location &loc, const SymbolMap &map) c
         break;
     }
 
-    allImpl(map, loc, *this, ret, mode, kind);
+    allImpl(map, *this, ret, mode, kind);
     return ret;
 }
 
-SymbolMap CursorInfo::virtuals(const Location &loc, const SymbolMap &map) const
+SymbolMap CursorInfo::virtuals(const SymbolMap &map) const
 {
     SymbolMap ret;
-    ret[loc] = *this;
-    const SymbolMap s = (kind == CXCursor_CXXMethod ? allReferences(loc, map) : targetInfos(map));
+    ret[usr] = *this;
+    const SymbolMap s = (kind == CXCursor_CXXMethod ? allReferences(map) : targetInfos(map));
     for (SymbolMap::const_iterator it = s.begin(); it != s.end(); ++it) {
         if (it->second.kind == kind)
             ret[it->first] = it->second;
@@ -212,15 +237,14 @@ SymbolMap CursorInfo::virtuals(const Location &loc, const SymbolMap &map) const
     return ret;
 }
 
-SymbolMap CursorInfo::declarationAndDefinition(const Location &loc, const SymbolMap &map) const
+SymbolMap CursorInfo::declarationAndDefinition(const SymbolMap &map) const
 {
     SymbolMap cursors;
-    cursors[loc] = *this;
+    cursors[usr] = *this;
 
-    Location l;
-    CursorInfo t = bestTarget(map, &l);
+    const CursorInfo t = bestTarget(map);
 
     if (t.kind == kind)
-        cursors[l] = t;
+        cursors[t.usr] = t;
     return cursors;
 }

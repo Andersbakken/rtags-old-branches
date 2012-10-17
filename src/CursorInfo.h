@@ -9,7 +9,7 @@
 #include <clang-c/Index.h>
 
 class CursorInfo;
-typedef Map<Location, CursorInfo> SymbolMap;
+typedef Map<ByteArray, CursorInfo> SymbolMap;
 class CursorInfo
 {
 public:
@@ -27,18 +27,22 @@ public:
         targets.clear();
         references.clear();
         symbolName.clear();
+        location.clear();
         usr.clear();
     }
 
-    bool dirty(const Set<uint32_t> &dirty)
+    bool dirty(const Set<uint32_t> &dirty, const SymbolMap &map)
     {
+        // This function intentionally ignores location, that will be checked
+        // from the outside
         bool changed = false;
-        Set<Location> *locations[] = { &targets, &references };
+        Set<ByteArray> *locations[] = { &targets, &references };
         for (int i=0; i<2; ++i) {
-            Set<Location> &l = *locations[i];
-            Set<Location>::iterator it = l.begin();
+            Set<ByteArray> &l = *locations[i];
+            Set<ByteArray>::iterator it = l.begin();
             while (it != l.end()) {
-                if (dirty.contains(it->fileId())) {
+                const uint32_t fileId = map.value(*it).location.fileId();
+                if (!fileId || dirty.contains(fileId)) {
                     changed = true;
                     l.erase(it++);
                 } else {
@@ -59,13 +63,13 @@ public:
         return isEmpty();
     }
 
-    CursorInfo bestTarget(const SymbolMap &map, Location *loc = 0) const;
+    CursorInfo bestTarget(const SymbolMap &map) const;
     SymbolMap targetInfos(const SymbolMap &map) const;
     SymbolMap referenceInfos(const SymbolMap &map) const;
-    SymbolMap callers(const Location &loc, const SymbolMap &map) const;
-    SymbolMap allReferences(const Location &loc, const SymbolMap &map) const;
-    SymbolMap virtuals(const Location &loc, const SymbolMap &map) const;
-    SymbolMap declarationAndDefinition(const Location &loc, const SymbolMap &map) const;
+    SymbolMap callers(const SymbolMap &map) const;
+    SymbolMap allReferences(const SymbolMap &map) const;
+    SymbolMap virtuals(const SymbolMap &map) const;
+    SymbolMap declarationAndDefinition(const SymbolMap &map) const;
 
     bool isClass() const
     {
@@ -83,7 +87,7 @@ public:
     bool isEmpty() const
     {
         assert((symbolLength || symbolName.isEmpty()) && (symbolLength || kind == CXCursor_FirstInvalid)); // these should be coupled
-        return !symbolLength && targets.isEmpty() && references.isEmpty() && start == -1 && end == -1 && usr.isEmpty();
+        return !symbolLength && targets.isEmpty() && references.isEmpty() && start == -1 && end == -1 && usr.isEmpty() && location.isNull();
     }
 
     bool unite(const CursorInfo &other)
@@ -129,6 +133,9 @@ public:
             changed = true;
         }
 
+        if (location.isNull() && !other.location.isNull())
+            location = other.location;
+
         return changed;
     }
 
@@ -139,15 +146,17 @@ public:
     ByteArray usr;
     CXCursorKind kind;
     bool isDefinition;
-    Set<Location> targets, references;
+    Set<ByteArray> targets, references;
     int start, end;
+    Location location;
 };
 
 
 template <> inline Serializer &operator<<(Serializer &s, const CursorInfo &t)
 {
     s << t.symbolLength << t.symbolName << t.usr << static_cast<int>(t.kind)
-      << t.isDefinition << t.targets << t.references << t.start << t.end;
+      << t.isDefinition << t.targets << t.references << t.start << t.end
+      << t.location;
     return s;
 }
 
@@ -155,7 +164,8 @@ template <> inline Deserializer &operator>>(Deserializer &s, CursorInfo &t)
 {
     int kind;
     s >> t.symbolLength >> t.symbolName >> t.usr >> kind
-      >> t.isDefinition >> t.targets >> t.references >> t.start >> t.end;
+      >> t.isDefinition >> t.targets >> t.references >> t.start >> t.end
+      >> t.location;
     t.kind = static_cast<CXCursorKind>(kind);
     return s;
 }

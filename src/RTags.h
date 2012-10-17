@@ -35,8 +35,8 @@ enum CursorType {
 }
 
 class CursorInfo;
-typedef Map<Location, CursorInfo> SymbolMap;
-typedef Map<ByteArray, Set<Location> > UsrMap;
+typedef Map<ByteArray, CursorInfo> SymbolMap;
+typedef Map<Location, Map<ByteArray, int> > UsrMap; // int is symbolLength
 typedef Map<Location, Set<Location> > ReferenceMap;
 typedef Map<ByteArray, Set<Location> > SymbolNameMap;
 typedef Map<uint32_t, Set<uint32_t> > DependencyMap;

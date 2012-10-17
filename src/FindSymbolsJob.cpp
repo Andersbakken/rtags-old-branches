@@ -15,9 +15,10 @@ FindSymbolsJob::FindSymbolsJob(const QueryMessage &query, const std::shared_ptr<
 
 void FindSymbolsJob::execute()
 {
+    std::shared_ptr<Project> proj = project();
     Map<Location, bool> out;
-    if (project()->indexer) {
-        Scope<const SymbolNameMap&> scope = project()->lockSymbolNamesForRead();
+    if (proj->indexer) {
+        Scope<const SymbolNameMap&> scope = proj->lockSymbolNamesForRead();
         if (scope.isNull())
             return;
         const SymbolNameMap &map = scope.data();
@@ -29,8 +30,8 @@ void FindSymbolsJob::execute()
             }
         }
     }
-    if (project()->grtags) {
-        Scope<const GRMap &> scope = project()->lockGRForRead();
+    if (proj->grtags) {
+        Scope<const GRMap &> scope = proj->lockGRForRead();
         const GRMap &map = scope.data();
         GRMap::const_iterator it = map.find(string);
         if (it != map.end()) {
@@ -43,17 +44,16 @@ void FindSymbolsJob::execute()
     }
 
     if (out.size()) {
-        Scope<const SymbolMap&> scope = project()->lockSymbolsForRead();
-        const SymbolMap *map = &scope.data();
+        Scope<const SymbolMap&> scope = proj->lockSymbolsForRead();
         List<RTags::SortedCursor> sorted;
         sorted.reserve(out.size());
         for (Map<Location, bool>::const_iterator it = out.begin(); it != out.end(); ++it) {
             RTags::SortedCursor node(it->first);
-            if (it->second && map) {
-                const SymbolMap::const_iterator found = map->find(it->first);
-                if (found != map->end()) {
-                    node.isDefinition = found->second.isDefinition;
-                    node.kind = found->second.kind;
+            if (it->second && proj->indexer) {
+                const CursorInfo info = proj->findCursorInfo(it->first);
+                if (!info.isNull()) {
+                    node.isDefinition = info.isDefinition;
+                    node.kind = info.kind;
                 }
             }
             sorted.push_back(node);

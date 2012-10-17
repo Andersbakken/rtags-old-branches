@@ -298,62 +298,53 @@ void IndexerJob::handleReference(const CXCursor &cursor, CXCursorKind kind, cons
             return;
     }
 
+    const ByteArray usr = usrForLocation(location, cursor);
+    if (usr.isEmpty())
+        return;
+
     const Location refLoc = createLocation(ref, 0);
     if (!refLoc.isValid())
         return;
 
-    CursorInfo &refInfo = mData->symbols[refLoc];
+    const ByteArray refUsr = usrForLocation(refLoc, ref);
+    if (refUsr.isEmpty())
+        return;
+
+    CursorInfo &refInfo = mData->symbols[refUsr];
     if (!refInfo.symbolLength && !handleCursor(ref, refKind, refLoc))
         return;
 
-    refInfo.references.insert(location);
+    refInfo.references.insert(usr);
 
-    CursorInfo &info = mData->symbols[location];
-    info.targets.insert(refLoc);
+    CursorInfo &info = mData->symbols[usr];
+    info.targets.insert(refUsr);
 
-    // We need the new cursor to replace the symbolLength. This is important
-    // in the following case:
-    // struct R { R(const &r); ... }
-    // R foo();
-    // ...
-    // R r = foo();
-
-    // The first cursor on foo() will be a reference to the copy constructor and
-    // this cursor will have a symbolLength of 1. Thus you won't be able to jump
-    // to foo from the o. This is fixed by making sure the newer target, if
-    // better, gets to decide on the symbolLength
-
-    // The !isCursor is var decls and field decls where we set up a target even
-    // if they're not considered references
-
-    if (!RTags::isCursor(info.kind) && (!info.symbolLength || info.bestTarget(mData->symbols).kind == refKind)) {
-        CXSourceRange range = clang_getCursorExtent(cursor);
-        unsigned start, end;
-        clang_getSpellingLocation(clang_getRangeStart(range), 0, 0, 0, &start);
-        clang_getSpellingLocation(clang_getRangeEnd(range), 0, 0, 0, &end);
-        info.start = start;
-        info.end = end;
-        info.isDefinition = false;
-        info.kind = kind;
-        switch (kind) {
-        case CXCursor_MacroExpansion:
-            info.symbolLength = refInfo.symbolLength;
-            break;
-        default:
-            info.symbolLength = end - start;
-            break;
-        }
-        info.symbolName = refInfo.symbolName;
-        info.usr = RTags::eatString(clang_getCursorUSR(cursor));
-        if (!info.usr.isEmpty())
-            mData->usrMap[info.usr].insert(location);
-
+    CXSourceRange range = clang_getCursorExtent(cursor);
+    unsigned start, end;
+    clang_getSpellingLocation(clang_getRangeStart(range), 0, 0, 0, &start);
+    clang_getSpellingLocation(clang_getRangeEnd(range), 0, 0, 0, &end);
+    info.location = location;
+    info.start = start;
+    info.end = end;
+    info.isDefinition = false;
+    info.kind = kind;
+    switch (kind) {
+    case CXCursor_MacroExpansion:
+        info.symbolLength = refInfo.symbolLength;
+        break;
+    default:
+        info.symbolLength = end - start;
+        break;
     }
+    info.symbolName = refInfo.symbolName;
+    info.usr = usr;
+    mData->usrMap[location].insert(usr, info.symbolLength);
+
     Set<Location> &val = mData->references[location];
     val.insert(refLoc);
 }
 
-void IndexerJob::addOverriddenCursors(const CXCursor& cursor, const Location& location, List<CursorInfo*>& infos)
+void IndexerJob::addOverriddenCursors(const CXCursor& cursor, const ByteArray &usr, List<CursorInfo*>& infos)
 {
     CXCursor *overridden;
     unsigned count;
@@ -361,11 +352,14 @@ void IndexerJob::addOverriddenCursors(const CXCursor& cursor, const Location& lo
     if (!overridden)
         return;
     for (unsigned i=0; i<count; ++i) {
-        Location loc = createLocation(overridden[i], 0);
-        CursorInfo &o = mData->symbols[loc];
+        const Location loc = createLocation(overridden[i], 0);
+        const ByteArray u = usrForLocation(loc);
+        // ### Is this ideal? Should I really go through a location here? Also,
+        // ### this is likely a case where we end up duplicating known usr's
+        CursorInfo &o = mData->symbols[u];
 
         //error() << "adding overridden (1) " << location << " to " << o;
-        o.references.insert(location);
+        o.references.insert(usr);
         List<CursorInfo*>::const_iterator inf = infos.begin();
         const List<CursorInfo*>::const_iterator infend = infos.end();
         while (inf != infend) {
@@ -375,7 +369,7 @@ void IndexerJob::addOverriddenCursors(const CXCursor& cursor, const Location& lo
         }
 
         infos.append(&o);
-        addOverriddenCursors(overridden[i], loc, infos);
+        addOverriddenCursors(overridden[i], usr, infos);
         infos.removeLast();
     }
     clang_disposeOverriddenCursors(overridden);
@@ -751,4 +745,15 @@ bool IndexerJob::abortIfStarted()
         return true;
     }
     return false;
+}
+
+ByteArray IndexerJob::usrForLocation(const Location &location, const CXCursor &cursor)
+{
+    Map<Location, ByteArray>::const_iterator it = mUsr.find(location);
+    if (it == mUsr.end()) {
+        const ByteArray usr = RTags::eatString(clang_getCursorUSR(cursor));
+        mUsr[usr] = location;
+        return usr;
+    }
+    return it->second;
 }

@@ -33,15 +33,14 @@ void ReferencesJob::execute()
 
             const SymbolMap &map = scope.data();
             for (Set<Location>::const_iterator it = locations.begin(); it != locations.end(); ++it) {
-                Location pos;
-                CursorInfo cursorInfo = RTags::findCursorInfo(map, *it, &pos);
+                CursorInfo cursorInfo = proj->findCursorInfo(*it);
                 if (startLocation.isNull())
-                    startLocation = pos;
+                    startLocation = cursorInfo.location;
                 if (RTags::isReference(cursorInfo.kind)) {
-                    cursorInfo = cursorInfo.bestTarget(map, &pos);
+                    cursorInfo = cursorInfo.bestTarget(map);
                 }
                 if (queryFlags() & QueryMessage::ReferencesForRenameSymbol) {
-                    const SymbolMap all = cursorInfo.allReferences(pos, map);
+                    const SymbolMap all = cursorInfo.allReferences(map);
                     bool classRename = false;
                     switch (cursorInfo.kind) {
                     case CXCursor_Constructor:
@@ -55,7 +54,7 @@ void ReferencesJob::execute()
 
                     for (SymbolMap::const_iterator a = all.begin(); a != all.end(); ++a) {
                         if (!classRename) {
-                            references.insert(a->first);
+                            references.insert(a->second.location);
                         } else {
                             enum State {
                                 FoundConstructor = 0x1,
@@ -74,7 +73,7 @@ void ReferencesJob::execute()
                                 }
                             }
                             if ((state & (FoundConstructor|FoundClass)) != FoundConstructor || !(state & FoundReferences)) {
-                                references.insert(a->first);
+                                references.insert(a->second.location);
                             }
                         }
                     }

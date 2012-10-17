@@ -53,26 +53,29 @@ public:
         return false;
     }
 
-    // bool insert(const Key &key, const Value &value)
-    // {
-    //     typedef typename std::map<Key, Value>::iterator Iterator;
-    //     typedef std::pair<Iterator, bool> Tuple;
-    //     Tuple tup = std::map<Key, Value>::insert(key, value);
-    //     return std::map<Key, Value>::insert(key, value).second;
-    //     // return tup->second;
-    // }
-
-    Map<Key, Value> &unite(const Map<Key, Value> &other)
+    bool insert(const Key &key, const Value &value)
     {
+        typedef typename std::map<Key, Value>::iterator Iterator;
+        return std::map<Key, Value>::insert(std::make_pair(key, value)).second;
+    }
+
+    Map<Key, Value> &unite(const Map<Key, Value> &other, int *count = 0)
+    {
+        typedef typename std::map<Key, Value>::iterator Iterator;
+        typedef std::pair<Iterator, bool> Tuple;
+        // Tuple tup = std::map<Key, Value>::insert(key, value);
+
+        int c = 0;
         typename std::map<Key, Value>::const_iterator it = other.begin();
         while (it != other.end()) {
             const Key &key = it->first;
             const Value &val = it->second;
-            std::map<Key, Value>::operator[](key) = val;
-            // std::map<Key, Value>::insert(it);
-            // std::map<Key, Value>::operator[](it->first) = it->second;
+            if (insert(key, val))
+                ++c;
             ++it;
         }
+        if (count)
+            *count = c;
         return *this;
     }
 

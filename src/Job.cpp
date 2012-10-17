@@ -95,12 +95,12 @@ bool Job::writeRaw(const ByteArray &out, unsigned flags)
     return true;
 }
 
-bool Job::write(const Location &location, const CursorInfo &ci, unsigned flags)
+bool Job::write(const CursorInfo &ci, unsigned flags)
 {
-    if (location.isNull())
+    if (ci.isEmpty())
         return false;
     const unsigned kf = keyFlags();
-    if (!write<1024>(flags, "%s %s", location.key(kf).constData(), ci.toString(kf).constData())) {
+    if (!write<1024>(flags, "%s %s", ci.toString(kf).constData())) {
         return false;
     }
     return true;
@@ -112,6 +112,8 @@ unsigned Job::keyFlags() const
 }
 void Job::run()
 {
+    if (mProject)
+        mProject->makeCurrent();
     execute();
     if (mId != -1)
         EventLoop::instance()->postEvent(Server::instance(), new JobOutputEvent(shared_from_this(), mBuffer, true));

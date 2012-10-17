@@ -80,31 +80,4 @@ ByteArray cursorToString(CXCursor cursor, unsigned flags)
     }
     return ret;
 }
-
-
-SymbolMap::const_iterator findCursorInfo(const SymbolMap &map, const Location &location)
-{
-    if (map.isEmpty())
-        return map.end();
-
-    SymbolMap::const_iterator it = map.find(location);
-    if (it != map.end())
-        return it;
-    it = map.lower_bound(location);
-    if (it == map.end()) {
-        --it;
-    } else {
-        const int cmp = it->first.compare(location);
-        if (!cmp)
-            return it;
-        --it;
-    }
-    if (location.fileId() != it->first.fileId())
-        return map.end();
-    const int off = location.offset() - it->first.offset();
-    if (it->second.symbolLength > off)
-        return it;
-    return map.end();
-}
-
 }
