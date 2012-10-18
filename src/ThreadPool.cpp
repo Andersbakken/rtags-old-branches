@@ -19,7 +19,7 @@ class ThreadPoolThread : public Thread
 {
 public:
     ThreadPoolThread(ThreadPool* pool);
-    ThreadPoolThread(const std::shared_ptr<ThreadPool::Job> &job);
+    ThreadPoolThread(const SharedPtr<ThreadPool::Job> &job);
 
     void stop();
 
@@ -27,7 +27,7 @@ protected:
     virtual void run();
 
 private:
-    std::shared_ptr<ThreadPool::Job> mJob;
+    SharedPtr<ThreadPool::Job> mJob;
     ThreadPool* mPool;
     bool mStopped;
 };
@@ -38,7 +38,7 @@ ThreadPoolThread::ThreadPoolThread(ThreadPool* pool)
     setAutoDelete(false);
 }
 
-ThreadPoolThread::ThreadPoolThread(const std::shared_ptr<ThreadPool::Job> &job)
+ThreadPoolThread::ThreadPoolThread(const SharedPtr<ThreadPool::Job> &job)
     : mJob(job), mPool(0), mStopped(false)
 {
     setAutoDelete(false);
@@ -71,9 +71,9 @@ void ThreadPoolThread::run()
             mPool->mCond.wait(&mPool->mMutex);
         if (mStopped)
             break;
-        std::deque<std::shared_ptr<ThreadPool::Job> >::iterator item = mPool->mJobs.begin();
+        std::deque<SharedPtr<ThreadPool::Job> >::iterator item = mPool->mJobs.begin();
         assert(item != mPool->mJobs.end());
-        std::shared_ptr<ThreadPool::Job> job = *item;
+        SharedPtr<ThreadPool::Job> job = *item;
         mPool->mJobs.erase(item);
         job->mMutex.lock();
         ++mPool->mBusyThreads;
@@ -132,12 +132,12 @@ void ThreadPool::setConcurrentJobs(int concurrentJobs)
     }
 }
 
-bool ThreadPool::jobLessThan(const std::shared_ptr<Job> &l, const std::shared_ptr<Job> &r)
+bool ThreadPool::jobLessThan(const SharedPtr<Job> &l, const SharedPtr<Job> &r)
 {
     return static_cast<unsigned>(l->mPriority) > static_cast<unsigned>(r->mPriority);
 }
 
-void ThreadPool::start(const std::shared_ptr<Job> &job, int priority)
+void ThreadPool::start(const SharedPtr<Job> &job, int priority)
 {
     job->mPriority = priority;
     if (priority == Guaranteed) {

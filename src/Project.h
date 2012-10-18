@@ -28,7 +28,7 @@ private:
         T t;
         ReadWriteLock *lock;
     };
-    std::shared_ptr<Data> mData;
+    SharedPtr<Data> mData;
 };
 
 class Indexer;
@@ -39,9 +39,9 @@ class Project
 public:
     Project(const Path &src);
 
-    std::shared_ptr<Indexer> indexer;
-    std::shared_ptr<FileManager> fileManager;
-    std::shared_ptr<GRTags> grtags;
+    SharedPtr<Indexer> indexer;
+    SharedPtr<FileManager> fileManager;
+    SharedPtr<GRTags> grtags;
 
     const Path srcRoot;
     Path resolvedSrcRoot;

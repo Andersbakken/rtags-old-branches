@@ -14,7 +14,7 @@ public:
         Sources,
         All
     };
-    GRScanJob(Mode mode, const Path &path, const std::shared_ptr<Project> &project);
+    GRScanJob(Mode mode, const Path &path, const SharedPtr<Project> &project);
     virtual void run();
     signalslot::Signal1<const Set<Path> &>&finished() { return mFinished; }
 
@@ -34,7 +34,7 @@ private:
     Set<Path> mPaths;
     signalslot::Signal1<const Set<Path> &> mFinished; // value => true means it's a source file
 
-    std::weak_ptr<Project> mProject;
+    WeakPtr<Project> mProject;
 };
 
 #endif

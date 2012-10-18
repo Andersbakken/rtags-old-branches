@@ -27,8 +27,8 @@ public:
         WriteBuffered = 0x4
     };
     enum { Priority = 10 };
-    Job(const QueryMessage &msg, unsigned jobFlags, const std::shared_ptr<Project> &proj);
-    Job(unsigned jobFlags, const std::shared_ptr<Project> &project);
+    Job(const QueryMessage &msg, unsigned jobFlags, const SharedPtr<Project> &proj);
+    Job(unsigned jobFlags, const SharedPtr<Project> &project);
     ~Job();
 
     bool hasFilter() const { return mPathFilters || mPathFiltersRegExp; }
@@ -50,7 +50,7 @@ public:
     unsigned keyFlags() const;
     inline bool filter(const ByteArray &val) const;
     signalslot::Signal1<const ByteArray &> &output() { return mOutput; }
-    std::shared_ptr<Project> project() const { return mProject; }
+    SharedPtr<Project> project() const { return mProject; }
     void resetProject() { mProject.reset(); }
     virtual void run();
     virtual void execute() = 0;
@@ -60,7 +60,7 @@ private:
     unsigned mJobFlags;
     unsigned mQueryFlags;
     signalslot::Signal1<const ByteArray &> mOutput;
-    std::shared_ptr<Project> mProject;
+    SharedPtr<Project> mProject;
     List<ByteArray> *mPathFilters;
     List<RegExp> *mPathFiltersRegExp;
     int mMax;
@@ -109,11 +109,11 @@ class JobOutputEvent : public Event
 {
 public:
     enum { Type = 2 };
-    JobOutputEvent(const std::shared_ptr<Job> &j, const ByteArray &o, bool f)
+    JobOutputEvent(const SharedPtr<Job> &j, const ByteArray &o, bool f)
         : Event(Type), job(j), out(o), finish(f), id(j->id())
     {}
 
-    std::weak_ptr<Job> job;
+    WeakPtr<Job> job;
     const ByteArray out;
     const bool finish;
     const int id;

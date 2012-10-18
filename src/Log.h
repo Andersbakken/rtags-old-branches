@@ -1,15 +1,15 @@
 #ifndef Log_h
 #define Log_h
 
-#include <memory>
-#include <sstream>
-#include <cxxabi.h>
-#include <assert.h>
 #include "ByteArray.h"
-#include "Map.h"
-#include "Set.h"
 #include "List.h"
+#include "Map.h"
 #include "Path.h"
+#include "Set.h"
+#include "SharedPtr.h"
+#include <assert.h>
+#include <cxxabi.h>
+#include <sstream>
 
 class Path;
 
@@ -162,7 +162,7 @@ private:
         int disableSpacingOverride;
     };
 
-    std::shared_ptr<Data> mData;
+    SharedPtr<Data> mData;
 };
 
 template <typename T> inline ByteArray typeName()

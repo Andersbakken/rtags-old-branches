@@ -12,8 +12,8 @@ class CursorInfo;
 class ReferencesJob : public Job
 {
 public:
-    ReferencesJob(const Location &location, const QueryMessage &query, const std::shared_ptr<Project> &project);
-    ReferencesJob(const ByteArray &symbolName, const QueryMessage &query, const std::shared_ptr<Project> &project);
+    ReferencesJob(const Location &location, const QueryMessage &query, const SharedPtr<Project> &project);
+    ReferencesJob(const ByteArray &symbolName, const QueryMessage &query, const SharedPtr<Project> &project);
 protected:
     virtual void execute();
 private:
