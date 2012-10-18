@@ -4,6 +4,7 @@
 #include "ByteArray.h"
 #include "Location.h"
 #include "Log.h"
+#include "SharedPtr.h"
 #include "Path.h"
 #include "SourceInformation.h"
 #include <assert.h>

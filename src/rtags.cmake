@@ -35,23 +35,24 @@ set(rtags_client_HDRS
     ProjectMessage.h
     QueryMessage.h
     RClient.h
+    RTags.h
     ReadLocker.h
+    ReadWriteLock.h
     RegExp.h
     ResponseMessage.h
     Semaphore.h
     Serializer.h
     Set.h
     SharedMemory.h
+    SharedPtr.h
     SignalSlot.h
     SourceInformation.h
-    ReadWriteLock.h
     Str.h
     Thread.h
     ThreadLocal.h
     ThreadPool.h
     WaitCondition.h
     WriteLocker.h
-    RTags.h
    )
 
 set(rtags_client_SRCS
