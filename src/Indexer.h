@@ -14,7 +14,7 @@
 
 struct IndexData;
 class IndexerJob;
-class Indexer : public std::enable_shared_from_this<Indexer>
+class Indexer : public EnableSharedFromThis<Indexer>
 {
 public:
     Indexer(const SharedPtr<Project> &project, bool validate);

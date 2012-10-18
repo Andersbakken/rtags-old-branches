@@ -17,7 +17,7 @@ class Location;
 class QueryMessage;
 class Project;
 class Job : public ThreadPool::Job, public AbortInterface,
-            public std::enable_shared_from_this<Job>
+            public EnableSharedFromThis<Job>
 {
 public:
     enum Flag {

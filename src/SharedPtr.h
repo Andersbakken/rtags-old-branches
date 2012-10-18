@@ -19,7 +19,18 @@ template <typename T>
 class WeakPtr : public std::weak_ptr<T>
 {
 public:
+    WeakPtr(const SharedPtr<T> &t)
+        : std::weak_ptr<T>(t)
+    {}
+    WeakPtr()
+    {}
     // SharedPtr<T> lock() const { return SharedPtr<T>(std::weak_ptr<T>::lock()); }
+};
+
+template <typename T>
+class EnableSharedFromThis : public std::enable_shared_from_this<T>
+{
+public:
 };
 
 #endif

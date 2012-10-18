@@ -9,7 +9,7 @@
 #include "Location.h"
 
 class Project;
-class GRParseJob : public ThreadPool::Job, public AbortInterface, public std::enable_shared_from_this<GRParseJob>
+class GRParseJob : public ThreadPool::Job, public AbortInterface, public EnableSharedFromThis<GRParseJob>
 {
 public:
     enum Flag {
