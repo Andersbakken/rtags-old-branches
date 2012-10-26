@@ -53,6 +53,7 @@ public:
     bool init(const Options &options);
     const List<ByteArray> &excludeFilter() const { return mOptions.excludeFilter; }
     const Path &clangPath() const { return mClangPath; }
+    const Options &options() const { return mOptions; }
 private:
     void onJobsComplete(shared_ptr<Indexer> indexer, int count);
     void onJobStarted(shared_ptr<Indexer> indexer, Path path);
