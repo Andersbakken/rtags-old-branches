@@ -299,8 +299,12 @@ void Server::onNewMessage(Message *message, Connection *connection)
         handleCompletionMessage(static_cast<CompletionMessage*>(message), connection);
         break;
     case ResponseMessage::MessageId:
+        assert(0);
+        connection->finish();
+        break;
     default:
         error("Unknown message: %d", message->messageId());
+        connection->finish();
         break;
     }
 }
@@ -1233,6 +1237,43 @@ void Server::reloadProjects(const QueryMessage &query, Connection *conn)
     const int cur = mProjects.size();
     conn->write<128>("Changed from %d to %d projects", old, cur);
     conn->finish();
+}
+
+void Server::selectProject(const ByteArray &pattern, Connection *conn)
+{
+    Path selected;
+    bool error = false;
+    RegExp rx(query.query());
+    const Path path = query.query();
+    const bool isPath = path.exists();
+    for (ProjectsMap::const_iterator it = mProjects.begin(); it != mProjects.end(); ++it) {
+        if (isPath ? it->second.project->match(path) : it->second.project->match(rx)) {
+            if (error) {
+                if (conn)
+                    conn->write(it->first);
+            } else if (!selected.isEmpty()) {
+                error = true;
+                if (conn) {
+                    conn->write<128>("Multiple matches for %s", path.constData());
+                    conn->write(selected);
+                    conn->write(it->first);
+                }
+                selected.clear();
+            } else {
+                selected = it->first;
+            }
+        }
+    }
+    if (!selected.isEmpty()) {
+        shared_ptr<Project> current = currentProject();
+        if (!current || selected != current->path()) {
+            setCurrentProject(selected);
+            if (!conn)
+                conn->write<128>("Selected project: %s for %s", selected.constData(), path.constData());
+        }
+    } else if (!error && conn) {
+        conn->write<128>("No matches for %s", path.constData());
+    }
 }
 
 bool Server::project(const QueryMessage &query, Connection *conn)
