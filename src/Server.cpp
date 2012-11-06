@@ -20,6 +20,7 @@
 #include "Log.h"
 #include "LogObject.h"
 #include "MakefileParser.h"
+#include "Match.h"
 #include "Message.h"
 #include "Messages.h"
 #include "Path.h"
@@ -757,7 +758,7 @@ void Server::reindex(const QueryMessage &query, Connection *conn)
         return;
     }
 
-    const int count = project->indexer->reindex(query.query(), query.flags() & QueryMessage::MatchRegexp);
+    const int count = project->indexer->reindex(query.match());
     // error() << count << query.query();
     if (count) {
         conn->write<128>("Dirtied %d files", count);
@@ -1255,15 +1256,12 @@ void Server::reloadProjects(const QueryMessage &query, Connection *conn)
     conn->finish();
 }
 
-bool Server::selectProject(const ByteArray &pattern, Connection *conn)
+bool Server::selectProject(const Match &match, Connection *conn)
 {
     Path selected;
     bool error = false;
-    RegExp rx(pattern);
-    const Path path = pattern;
-    const bool isPath = path.exists();
     for (ProjectsMap::const_iterator it = mProjects.begin(); it != mProjects.end(); ++it) {
-        if (isPath ? it->second.project->match(path) : it->second.project->match(rx)) {
+        if (it->second.project->match(match)) {
             if (error) {
                 if (conn)
                     conn->write(it->first);
@@ -1399,7 +1397,7 @@ void Server::startCompletion(const Path &path, int line, int column, const ByteA
     CXTranslationUnit unit;
     List<ByteArray> args;
     if (!project->indexer->fetchFromCache(path, args, index, unit)) {
-        project->indexer->reindex(path, false);
+        project->indexer->reindex(Match(path));
         conn->write<128>("Scheduled rebuild of %s", path.constData());
         if (!isCompletionStream(conn))
             conn->finish();

@@ -55,7 +55,7 @@ public:
     const Path &clangPath() const { return mClangPath; }
     const Options &options() const { return mOptions; }
 private:
-    bool selectProject(const ByteArray &pattern, Connection *conn);
+    bool selectProject(const Match &match, Connection *conn);
     bool updateProject(const List<ByteArray> &projects);
     void onJobsComplete(shared_ptr<Indexer> indexer, int count);
     void onJobStarted(shared_ptr<Indexer> indexer, Path path);
