@@ -52,6 +52,8 @@ static inline CursorType cursorType(CXCursorKind kind)
             return Include;
         case CXCursor_MacroDefinition:
             return Cursor;
+        case CXCursor_CXXDeleteExpr:
+            return Reference;
         default:
             break;
         }
