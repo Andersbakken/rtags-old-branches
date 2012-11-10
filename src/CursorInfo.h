@@ -28,6 +28,7 @@ public:
         targets.clear();
         references.clear();
         symbolName.clear();
+        container.clear();
     }
 
     bool dirty(const Set<uint32_t> &dirty)
@@ -82,7 +83,7 @@ public:
 
     bool isEmpty() const
     {
-        return !symbolLength && targets.isEmpty() && references.isEmpty() && start == -1 && end == -1;
+        return !symbolLength && targets.isEmpty() && references.isEmpty() && start == -1 && end == -1 && !container.isValid();
     }
 
     bool unite(const CursorInfo &other)
@@ -122,6 +123,10 @@ public:
             if (inserted)
                 changed = true;
         }
+        if (container.isNull() && other.container.isValid()) {
+            container = other.container;
+            changed = true;
+        }
 
         return changed;
     }
@@ -135,13 +140,15 @@ public:
     bool isDefinition;
     Set<Location> targets, references;
     int start, end;
+    Location container;
 };
 
 
 template <> inline Serializer &operator<<(Serializer &s, const CursorInfo &t)
 {
     s << t.symbolLength << t.symbolName << static_cast<int>(t.kind)
-      << static_cast<int>(t.type) << t.isDefinition << t.targets << t.references << t.start << t.end;
+      << static_cast<int>(t.type) << t.isDefinition << t.targets << t.references << t.start << t.end
+      << t.container;
     return s;
 }
 
@@ -149,7 +156,8 @@ template <> inline Deserializer &operator>>(Deserializer &s, CursorInfo &t)
 {
     int kind, type;
     s >> t.symbolLength >> t.symbolName >> kind >> type
-      >> t.isDefinition >> t.targets >> t.references >> t.start >> t.end;
+      >> t.isDefinition >> t.targets >> t.references >> t.start >> t.end
+      >> t.container;
     t.kind = static_cast<CXCursorKind>(kind);
     t.type = static_cast<CXTypeKind>(type);
     return s;
