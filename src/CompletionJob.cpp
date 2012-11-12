@@ -97,7 +97,7 @@ static inline ByteArray fullyQualifiedName(CXCursor cursor)
         if (!ret.isEmpty())
             ret.prepend("::");
         ret.prepend(RTags::eatString(clang_getCursorDisplayName(cursor)));
-        if (!RTags::needsQualifiers(kind))
+        if (!RTags::needsQualifiers(kind, 0))
             break;
         cursor = clang_getCursorSemanticParent(cursor);
         kind = clang_getCursorKind(cursor);

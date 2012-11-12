@@ -104,7 +104,7 @@ ByteArray IndexerJob::addNamePermutations(const CXCursor &cursor, const Location
 
         if (first) {
             first = false;
-        } else if (!RTags::needsQualifiers(kind)) {
+        } else if (!RTags::needsQualifiers(kind, RTags::IncludeVarAndParmDecl)) {
             return qparam;
         }
 
@@ -143,7 +143,7 @@ ByteArray IndexerJob::addNamePermutations(const CXCursor &cursor, const Location
             addToSymbolNames(qnoparam, hasTemplates, location, mData->symbolNames);
         }
 
-        if (!RTags::needsQualifiers(kind))
+        if (!RTags::needsQualifiers(kind, RTags::IncludeVarAndParmDecl))
             return qparam;
         cur = clang_getCursorSemanticParent(cur);
     }

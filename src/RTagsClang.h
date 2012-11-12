@@ -71,15 +71,19 @@ static inline bool isContainer(CXCursorKind kind)
     return false;
 }
 
-static inline bool needsQualifiers(CXCursorKind kind)
+enum NeedsQualifiersFlag {
+    IncludeVarAndParmDecl = 0x1
+};
+static inline bool needsQualifiers(CXCursorKind kind, unsigned flags)
 {
     switch (kind) {
+    case CXCursor_VarDecl:
+    case CXCursor_ParmDecl:
+        return (flags & IncludeVarAndParmDecl);
     case CXCursor_CXXMethod:
     case CXCursor_Constructor:
     case CXCursor_FunctionDecl:
     case CXCursor_Destructor:
-    case CXCursor_VarDecl:
-    case CXCursor_ParmDecl:
     case CXCursor_FieldDecl:
     case CXCursor_ClassTemplate:
     case CXCursor_Namespace:
