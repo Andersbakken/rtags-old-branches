@@ -11,16 +11,8 @@ Project::Project(unsigned flags, const Path &path)
 
 void Project::init(const Path &src)
 {
+    initSrcPath(src);
     assert(!isValid());
-    mResolvedSrcRoot = mSrcRoot = src;
-    mResolvedSrcRoot.resolve();
-    if (!mSrcRoot.endsWith('/'))
-        mSrcRoot.append('/');
-    if (mResolvedSrcRoot.ByteArray::operator==(mSrcRoot)) {
-        mResolvedSrcRoot.clear();
-    } else if (!mResolvedSrcRoot.endsWith('/')) {
-        mResolvedSrcRoot.append('/');
-    }
 
     if (mFlags & FileManagerEnabled) {
         fileManager.reset(new FileManager);
@@ -39,6 +31,19 @@ void Project::init(const Path &src)
     if (mFlags & GRTagsEnabled) {
         grtags.reset(new GRTags);
         grtags->init(shared_from_this());
+    }
+}
+
+void Project::initSrcPath(const Path &src)
+{
+    mResolvedSrcRoot = mSrcRoot = src;
+    mResolvedSrcRoot.resolve();
+    if (!mSrcRoot.endsWith('/'))
+        mSrcRoot.append('/');
+    if (mResolvedSrcRoot.ByteArray::operator==(mSrcRoot)) {
+        mResolvedSrcRoot.clear();
+    } else if (!mResolvedSrcRoot.endsWith('/')) {
+        mResolvedSrcRoot.append('/');
     }
 }
 

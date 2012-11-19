@@ -14,6 +14,8 @@ class MakefileParser
 {
 public:
     MakefileParser(const List<ByteArray> &extraCompilerFlags, Connection *conn);
+    MakefileParser(const List<ByteArray> &extraCompilerFlags, bool detectOnly);
+
     ~MakefileParser();
 
     void run(const Path &makefile, const List<ByteArray> &args);
@@ -25,6 +27,7 @@ public:
     signalslot::Signal1<MakefileParser*> &done() { return mDone; }
     signalslot::Signal2<const GccArguments &, MakefileParser*> &fileReady() { return mFileReady; }
     int sourceCount() const { return mSourceCount; }
+    bool detectOnly() const { return mDetectOnly; }
 private:
     void processMakeOutput();
     void processMakeError();
@@ -41,6 +44,7 @@ private:
     signalslot::Signal2<const GccArguments &, MakefileParser*> mFileReady;
     Map<Path, List<ByteArray> > mPendingFiles;
     Path mCurrentPath;
+    const bool mDetectOnly;
 };
 
 #endif // MAKEFILEPARSER_H

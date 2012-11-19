@@ -72,7 +72,7 @@ private:
     shared_ptr<Project> setCurrentProject(const Path &path);
     void event(const Event *event);
     void onFileReady(const GccArguments &file, MakefileParser *parser);
-    bool processSourceFile(const GccArguments &args, const Path &makefile);
+    bool processSourceFile(const GccArguments &args, const Path &makefile, bool detectOnly = false);
     void onNewMessage(Message *message, Connection *conn);
     void onConnectionDestroyed(Connection *o);
     void onMakefileParserDone(MakefileParser *parser);

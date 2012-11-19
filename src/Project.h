@@ -46,6 +46,7 @@ public:
     Project(unsigned flags, const Path &path);
     bool isValid() const;
     void init(const Path &srcRoot);
+    void initSrcPath(const Path &srcRoot);
 
     void unload();
 

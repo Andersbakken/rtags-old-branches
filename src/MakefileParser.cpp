@@ -12,7 +12,12 @@
 #endif
 
 MakefileParser::MakefileParser(const List<ByteArray> &extraFlags, Connection *conn)
-    : mProc(0), mExtraCompilerFlags(extraFlags), mSourceCount(0), mConnection(conn)
+    : mProc(0), mExtraCompilerFlags(extraFlags), mSourceCount(0), mConnection(conn), mDetectOnly(0)
+{
+}
+
+MakefileParser::MakefileParser(const List<ByteArray> &extraFlags, bool detectOnly)
+    : mProc(0), mExtraCompilerFlags(extraFlags), mSourceCount(0), mConnection(0), mDetectOnly(detectOnly)
 {
 }
 
@@ -26,8 +31,11 @@ MakefileParser::~MakefileParser()
 
 void MakefileParser::stop()
 {
-    delete mProc;
-    mProc = 0; // ###???
+    if (mProc) {
+        mProc->stop();
+        mProc->deleteLater();
+        mProc = 0;
+    }
 }
 
 void MakefileParser::run(const Path &makefile, const List<ByteArray> &arguments)

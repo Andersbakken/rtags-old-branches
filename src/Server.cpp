@@ -191,6 +191,11 @@ bool Server::addProject(const Path &p, const ProjectEntry &newEntry)
             flags |= Project::GRTagsEnabled;
         } else {
             flags |= Project::IndexerEnabled;
+
+            MakefileParser *parser = new MakefileParser(entry.flags, true);
+            parser->fileReady().connect(this, &Server::onFileReady);
+            parser->done().connect(this, &Server::onMakefileParserDone);
+            parser->run(path, entry.args);
         }
 
         entry.project.reset(new Project(flags, path));
@@ -349,7 +354,7 @@ void Server::handleProjectMessage(ProjectMessage *message, Connection *conn)
         bool finish = true;
         if (e.type & RTags::Type_Makefile) {
             if ((e.project && e.project->isValid()) || (message->flags() & ProjectMessage::Automake)) {
-                finish = !make(path, args, message->extraCompilerFlags(), conn);
+                finish = !make(path, args, entry.flags, conn);
             }
         }
         if (finish)
@@ -920,11 +925,11 @@ static Path findProjectRoot(const Path &path)
 
 void Server::onFileReady(const GccArguments &args, MakefileParser *parser)
 {
-    if (!processSourceFile(args, parser->makefile()))
+    if (!processSourceFile(args, parser->makefile(), parser->detectOnly()) || parser->detectOnly())
         parser->stop();
 }
 
-bool Server::processSourceFile(const GccArguments &args, const Path &proj)
+bool Server::processSourceFile(const GccArguments &args, const Path &proj, bool detectOnly)
 {
     const List<Path> inputFiles = args.inputFiles();
     const int count = inputFiles.size();
@@ -947,6 +952,11 @@ bool Server::processSourceFile(const GccArguments &args, const Path &proj)
             error("Can't find project root for %s", inputFiles.begin()->constData());
             return false;
         }
+        if (detectOnly) {
+            project->initSrcPath(srcRoot);
+            return true;
+        }
+
         project->init(srcRoot);
         project->indexer->jobsComplete().connectAsync(this, &Server::onJobsComplete);
         project->indexer->jobStarted().connectAsync(this, &Server::onJobStarted);
@@ -976,7 +986,6 @@ bool Server::processSourceFile(const GccArguments &args, const Path &proj)
                 fclose(f);
             }
         }
-
         project->indexer->beginMakefile();
     }
     if (!mCurrentProject.lock())
@@ -1316,8 +1325,11 @@ void Server::project(const QueryMessage &query, Connection *conn)
     if (query.query().isEmpty()) {
         shared_ptr<Project> current = currentProject();
         for (ProjectsMap::const_iterator it = mProjects.begin(); it != mProjects.end(); ++it) {
-            conn->write<128>("%s%s%s",
+            conn->write<128>("%s%s%s%s",
                              it->first.constData(),
+                             it->second.project->srcRoot().isEmpty()
+                             ? ""
+                             : ByteArray::snprintf<128>(" %s", it->second.project->srcRoot().constData()).constData(),
                              it->second.project->isValid() ? " (loaded)" : "",
                              it->second.project == current ? " <=" : "");
         }
