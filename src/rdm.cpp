@@ -10,7 +10,6 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "GRScanJob.h"
 #ifdef HAVE_BACKTRACE
 #include <execinfo.h>
 #include <cxxabi.h>

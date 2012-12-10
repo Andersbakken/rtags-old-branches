@@ -10,7 +10,6 @@
 #include "FindFileJob.h"
 #include "FindSymbolsJob.h"
 #include "FollowLocationJob.h"
-#include "GRTags.h"
 #include "Indexer.h"
 #include "IndexerJob.h"
 #include "IniFile.h"
@@ -167,7 +166,7 @@ bool Server::addProject(const Path &p, const ProjectEntry &newEntry)
 {
     if (newEntry.type & RTags::Type_Command) {
         mCommandProjects[p] = newEntry;
-        const unsigned type = newEntry.type & (RTags::Type_Makefile|RTags::Type_SmartProject|RTags::Type_GRTags);
+        const unsigned type = newEntry.type & (RTags::Type_Makefile|RTags::Type_SmartProject);
         CommandProcess *proc = new CommandProcess(type);
         // error() << "Running" << p << ByteArray::join(newEntry.args, ' ');
         proc->start(p, newEntry.args);
@@ -188,14 +187,7 @@ bool Server::addProject(const Path &p, const ProjectEntry &newEntry)
             unloadProject(path);
         entry = newEntry;
         entry.saveKey = p;
-        unsigned flags = Project::FileManagerEnabled;
-        if (entry.type & RTags::Type_GRTags) {
-            flags |= Project::GRTagsEnabled;
-        } else {
-            flags |= Project::IndexerEnabled;
-        }
-
-        entry.project.reset(new Project(flags, path));
+        entry.project.reset(new Project(Project::FileManagerEnabled|Project::IndexerEnabled, path));
         return true;
     }
     return false;
@@ -214,10 +206,8 @@ void Server::reloadProjects()
     } entries[] = {
         { RTags::Type_Makefile, "Makefiles" },
         { RTags::Type_SmartProject, "SmartProjects" },
-        { RTags::Type_GRTags, "GRTags" },
         { RTags::Type_Command|RTags::Type_Makefile, "MakefileCommands" },
         { RTags::Type_Command|RTags::Type_SmartProject, "SmartProjectCommands" },
-        { RTags::Type_Command|RTags::Type_GRTags, "GRTagsCommands" },
         { 0, 0 }
     };
     const Path home = Path::home();
@@ -332,7 +322,6 @@ void Server::handleProjectMessage(ProjectMessage *message, Connection *conn)
     case RTags::Type_Command:
         break;
     case RTags::Type_Makefile:
-    case RTags::Type_GRTags:
     case RTags::Type_SmartProject: {
         ProjectEntry entry;
         entry.type = message->type();
@@ -510,11 +499,9 @@ void Server::followLocation(const QueryMessage &query, Connection *conn)
         conn->finish();
         return;
     }
-
-    shared_ptr<FollowLocationJob> job(new FollowLocationJob(loc, query, project));
-    job->setId(nextId());
-    mPendingLookups[job->id()] = conn;
-    startQueryJob(job);
+    FollowLocationJob job(conn, loc, query, project);
+    job.execute();
+    conn->finish();
 }
 
 void Server::findFile(const QueryMessage &query, Connection *conn)
@@ -526,41 +513,40 @@ void Server::findFile(const QueryMessage &query, Connection *conn)
         return;
     }
 
-    shared_ptr<FindFileJob> job(new FindFileJob(query, project));
-    job->setId(nextId());
-    mPendingLookups[job->id()] = conn;
-    startQueryJob(job);
+    FindFileJob job(conn, query, project);
+    job.execute();
+    conn->finish();
 }
 
 void Server::dumpFile(const QueryMessage &query, Connection *conn)
 {
-    const uint32_t fileId = Location::fileId(query.query());
-    if (!fileId) {
-        conn->write<256>("%s is not indexed", query.query().constData());
-        conn->finish();
-        return;
-    }
+    // const uint32_t fileId = Location::fileId(query.query());
+    // if (!fileId) {
+    //     conn->write<256>("%s is not indexed", query.query().constData());
+    //     conn->finish();
+    //     return;
+    // }
 
-    Location loc(fileId, 0);
-    updateProjectForLocation(loc);
+    // Location loc(fileId, 0);
+    // updateProjectForLocation(loc);
 
-    shared_ptr<Project> project = currentProject();
-    if (!project || !project->indexer) {
-        conn->write<256>("%s is not indexed", query.query().constData());
-        conn->finish();
-        return;
-    }
-    const SourceInformation c = project->indexer->sourceInfo(fileId);
-    if (c.args.isEmpty()) {
-        conn->write<256>("%s is not indexed", query.query().constData());
-        conn->finish();
-        return;
-    }
+    // shared_ptr<Project> project = currentProject();
+    // if (!project || !project->indexer) {
+    //     conn->write<256>("%s is not indexed", query.query().constData());
+    //     conn->finish();
+    //     return;
+    // }
+    // const SourceInformation c = project->indexer->sourceInfo(fileId);
+    // if (c.args.isEmpty()) {
+    //     conn->write<256>("%s is not indexed", query.query().constData());
+    //     conn->finish();
+    //     return;
+    // }
 
-    shared_ptr<IndexerJob> job(new IndexerJob(query, project, c.sourceFile, c.args));
-    job->setId(nextId());
-    mPendingLookups[job->id()] = conn;
-    startQueryJob(job);
+    // shared_ptr<IndexerJob> job(new IndexerJob(query, project, c.sourceFile, c.args));
+    // job->setId(nextId());
+    // mPendingLookups[job->id()] = conn;
+    // startQueryJob(job);
 }
 
 void Server::cursorInfo(const QueryMessage &query, Connection *conn)
@@ -578,10 +564,9 @@ void Server::cursorInfo(const QueryMessage &query, Connection *conn)
         return;
     }
 
-    shared_ptr<CursorInfoJob> job(new CursorInfoJob(loc, query, project));
-    job->setId(nextId());
-    mPendingLookups[job->id()] = conn;
-    startQueryJob(job);
+    CursorInfoJob job(conn, loc, query, project);
+    job.execute();
+    conn->finish();
 }
 
 void Server::fixIts(const QueryMessage &query, Connection *conn)
@@ -614,10 +599,9 @@ void Server::referencesForLocation(const QueryMessage &query, Connection *conn)
         return;
     }
 
-    shared_ptr<ReferencesJob> job(new ReferencesJob(loc, query, project));
-    job->setId(nextId());
-    mPendingLookups[job->id()] = conn;
-    startQueryJob(job);
+    ReferencesJob job(conn, loc, query, project);
+    job.execute();
+    conn->finish();
 }
 
 void Server::referencesForName(const QueryMessage& query, Connection *conn)
@@ -631,10 +615,9 @@ void Server::referencesForName(const QueryMessage& query, Connection *conn)
         return;
     }
 
-    shared_ptr<ReferencesJob> job(new ReferencesJob(name, query, project));
-    job->setId(nextId());
-    mPendingLookups[job->id()] = conn;
-    startQueryJob(job);
+    ReferencesJob job(conn, name, query, project);
+    job.execute();
+    conn->finish();
 }
 
 void Server::findSymbols(const QueryMessage &query, Connection *conn)
@@ -648,10 +631,9 @@ void Server::findSymbols(const QueryMessage &query, Connection *conn)
         return;
     }
 
-    shared_ptr<FindSymbolsJob> job(new FindSymbolsJob(query, project));
-    job->setId(nextId());
-    mPendingLookups[job->id()] = conn;
-    startQueryJob(job);
+    FindSymbolsJob job(conn, query, project);
+    job.execute();
+    conn->finish();
 }
 
 void Server::listSymbols(const QueryMessage &query, Connection *conn)
@@ -665,10 +647,9 @@ void Server::listSymbols(const QueryMessage &query, Connection *conn)
         return;
     }
 
-    shared_ptr<ListSymbolsJob> job(new ListSymbolsJob(query, project));
-    job->setId(nextId());
-    mPendingLookups[job->id()] = conn;
-    startQueryJob(job);
+    ListSymbolsJob job(conn, query, project);
+    job.execute();
+    conn->finish();
 }
 
 void Server::status(const QueryMessage &query, Connection *conn)
@@ -680,10 +661,9 @@ void Server::status(const QueryMessage &query, Connection *conn)
         return;
     }
 
-    shared_ptr<StatusJob> job(new StatusJob(query, project));
-    job->setId(nextId());
-    mPendingLookups[job->id()] = conn;
-    startQueryJob(job);
+    StatusJob job(conn, query, project);
+    job.execute();
+    conn->finish();
 }
 
 void Server::isIndexed(const QueryMessage &query, Connection *conn)
@@ -797,7 +777,7 @@ void Server::startIndexerJob(const shared_ptr<IndexerJob> &job, int priority)
 
 void Server::startQueryJob(const shared_ptr<Job> &job)
 {
-    mQueryThreadPool.start(job);
+    job->execute();
 }
 
 /* Same behavior as rtags-default-current-project() */
@@ -1092,10 +1072,8 @@ void Server::writeProjects()
             switch (it->second.type) {
             case RTags::Type_Makefile: key = "Makefiles"; break;
             case RTags::Type_SmartProject: key = "SmartProjects"; break;
-            case RTags::Type_GRTags: key = "GRTags"; break;
             case RTags::Type_Command|RTags::Type_Makefile: key = "MakefileCommands"; break;
             case RTags::Type_Command|RTags::Type_SmartProject: key = "SmartProjectCommands"; break;
-            case RTags::Type_Command|RTags::Type_GRTags: key = "GRTagsCommands"; break;
             default:
                 assert(0);
             }

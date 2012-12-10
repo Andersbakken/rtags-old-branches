@@ -11,8 +11,7 @@ class QueryMessage;
 class CursorInfoJob : public Job
 {
 public:
-    CursorInfoJob(const Location &loc, const QueryMessage &query, const shared_ptr<Project> &proj);
-protected:
+    CursorInfoJob(Connection *connection, const Location &loc, const QueryMessage &query, const shared_ptr<Project> &proj);
     virtual void execute();
 private:
     const Location location;

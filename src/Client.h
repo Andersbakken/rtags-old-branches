@@ -34,6 +34,7 @@ public:
     bool connectToServer();
     void onDisconnected();
     void onNewMessage(Message *message, Connection *);
+    Connection *connection() const { return mConnection; }
 private:
     void sendMessage(int id, const ByteArray& msg, SendFlag flag);
     Connection *mConnection;

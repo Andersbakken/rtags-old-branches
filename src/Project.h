@@ -34,14 +34,12 @@ private:
 
 class Indexer;
 class FileManager;
-class GRTags;
 class Project : public enable_shared_from_this<Project>
 {
 public:
     enum Flag {
         IndexerEnabled = 0x1,
-        GRTagsEnabled = 0x2,
-        FileManagerEnabled = 0x4
+        FileManagerEnabled = 0x2
     };
     Project(unsigned flags, const Path &path);
     bool isValid() const;
@@ -52,7 +50,6 @@ public:
     unsigned flags() const { return mFlags; }
     shared_ptr<Indexer> indexer;
     shared_ptr<FileManager> fileManager;
-    shared_ptr<GRTags> grtags;
 
     Path srcRoot() const { return mSrcRoot; }
     Path resolvedSrcRoot() const { return mResolvedSrcRoot; }
@@ -71,12 +68,6 @@ public:
 
     Scope<const UsrMap&> lockUsrForRead(int maxTime = 0);
     Scope<UsrMap&> lockUsrForWrite();
-
-    Scope<const GRFilesMap&> lockGRFilesForRead(int maxTime = 0);
-    Scope<GRFilesMap&> lockGRFilesForWrite();
-
-    Scope<const GRMap&> lockGRForRead(int maxTime = 0);
-    Scope<GRMap&> lockGRForWrite();
 
     bool isIndexed(uint32_t fileId) const;
 
@@ -100,12 +91,6 @@ private:
 
     FilesMap mFiles;
     ReadWriteLock mFilesLock;
-
-    GRFilesMap mGRFiles;
-    ReadWriteLock mGRFilesLock;
-
-    GRMap mGR;
-    ReadWriteLock mGRLock;
 };
 
 #endif

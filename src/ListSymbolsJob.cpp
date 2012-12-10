@@ -4,13 +4,13 @@
 #include "RTags.h"
 
 enum {
-    DefaultFlags = Job::WriteUnfiltered|Job::WriteBuffered,
+    DefaultFlags = Job::WriteUnfiltered,
     ElispFlags = DefaultFlags|Job::QuoteOutput
 };
 
 
-ListSymbolsJob::ListSymbolsJob(const QueryMessage &query, const shared_ptr<Project> &proj)
-    : Job(query, query.flags() & QueryMessage::ElispList ? ElispFlags : DefaultFlags, proj),
+ListSymbolsJob::ListSymbolsJob(Connection *connection, const QueryMessage &query, const shared_ptr<Project> &proj)
+    : Job(connection, query, query.flags() & QueryMessage::ElispList ? ElispFlags : DefaultFlags, proj),
       string(query.query())
 {
 }
@@ -53,30 +53,6 @@ void ListSymbolsJob::execute()
                     } else {
                         out.append(entry);
                     }
-                }
-            }
-            ++it;
-        }
-    }
-
-    if (project()->grtags) {
-        Scope<const GRMap &> scope = project()->lockGRForRead();
-        const GRMap &map = scope.data();
-        GRMap::const_iterator it = string.isEmpty() ? map.begin() : map.lower_bound(string);
-        while (it != map.end()) {
-            const ByteArray &entry = it->first;
-            if (!string.isEmpty() && !entry.startsWith(string))
-                break;
-
-            const Map<Location, bool> &locations = it->second;
-            for (Map<Location, bool>::const_iterator i = locations.begin(); i != locations.end(); ++i) {
-                if (!i->second && (!hasFilter || filter(i->first.path()))) {
-                    if (elispList) {
-                        write(entry);
-                    } else {
-                        out.append(entry);
-                    }
-                    break;
                 }
             }
             ++it;

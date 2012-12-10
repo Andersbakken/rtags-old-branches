@@ -8,12 +8,10 @@
 #include "Location.h"
 #include "RegExp.h"
 
-class GRTags;
 class FindFileJob : public Job
 {
 public:
-    FindFileJob(const QueryMessage &query, const shared_ptr<Project> &project);
-protected:
+    FindFileJob(Connection *connection, const QueryMessage &query, const shared_ptr<Project> &project);
     virtual void execute();
 private:
     ByteArray mPattern;

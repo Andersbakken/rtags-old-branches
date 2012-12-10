@@ -9,9 +9,9 @@
 // static int count = 0;
 // static int active = 0;
 
-Job::Job(const QueryMessage &query, unsigned jobFlags, const shared_ptr<Project> &proj)
+Job::Job(Connection *connection, const QueryMessage &query, unsigned jobFlags, const shared_ptr<Project> &proj)
     : mId(-1), mJobFlags(jobFlags), mQueryFlags(query.flags()), mProject(proj), mPathFilters(0),
-      mPathFiltersRegExp(0), mMax(query.max())
+      mPathFiltersRegExp(0), mMax(query.max()), mConnection(connection)
 {
     const List<ByteArray> &pathFilters = query.pathFilters();
     if (!pathFilters.isEmpty()) {
@@ -29,7 +29,8 @@ Job::Job(const QueryMessage &query, unsigned jobFlags, const shared_ptr<Project>
 }
 
 Job::Job(unsigned jobFlags, const shared_ptr<Project> &proj)
-    : mId(-1), mJobFlags(jobFlags), mQueryFlags(0), mProject(proj), mPathFilters(0), mPathFiltersRegExp(0), mMax(-1)
+    : mId(-1), mJobFlags(jobFlags), mQueryFlags(0), mProject(proj), mPathFilters(0), mPathFiltersRegExp(0), mMax(-1),
+      mConnection(0)
 {
 }
 
@@ -71,6 +72,7 @@ bool Job::writeRaw(const ByteArray &out, unsigned flags)
     if (!(flags & IgnoreMax)) {
         switch (mMax) {
         case 0:
+            return false;
         case -1:
             break;
         default:
@@ -78,21 +80,11 @@ bool Job::writeRaw(const ByteArray &out, unsigned flags)
             break;
         }
     }
-
-    if (mJobFlags & WriteBuffered) {
-        enum { BufSize = 16384 };
-        if (mBuffer.size() + out.size() + 1 > BufSize) {
-            EventLoop::instance()->postEvent(Server::instance(), new JobOutputEvent(shared_from_this(), mBuffer, false));
-            mBuffer.clear();
-            mBuffer.reserve(BufSize);
-        }
-        if (!mBuffer.isEmpty())
-            mBuffer.append('\n');
-        mBuffer.append(out);
-    } else {
-        EventLoop::instance()->postEvent(Server::instance(), new JobOutputEvent(shared_from_this(), out, false));
+    if (mConnection) {
+        if (!mConnection->write(out))
+            mConnection = 0;
     }
-    return true;
+    return mConnection;
 }
 
 bool Job::write(const Location &location, unsigned flags)
@@ -119,10 +111,4 @@ bool Job::write(const CursorInfo &ci, unsigned flags)
 unsigned Job::keyFlags() const
 {
     return QueryMessage::keyFlags(mQueryFlags);
-}
-void Job::run()
-{
-    execute();
-    if (mId != -1)
-        EventLoop::instance()->postEvent(Server::instance(), new JobOutputEvent(shared_from_this(), mBuffer, true));
 }

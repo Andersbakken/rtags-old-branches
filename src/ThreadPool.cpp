@@ -19,7 +19,7 @@ class ThreadPoolThread : public Thread
 {
 public:
     ThreadPoolThread(ThreadPool* pool);
-    ThreadPoolThread(const shared_ptr<ThreadPool::Job> &job);
+    ThreadPoolThread(const shared_ptr<ThreadPoolJob> &job);
 
     void stop();
 
@@ -27,7 +27,7 @@ protected:
     virtual void run();
 
 private:
-    shared_ptr<ThreadPool::Job> mJob;
+    shared_ptr<ThreadPoolJob> mJob;
     ThreadPool* mPool;
     bool mStopped;
 };
@@ -38,7 +38,7 @@ ThreadPoolThread::ThreadPoolThread(ThreadPool* pool)
     setAutoDelete(false);
 }
 
-ThreadPoolThread::ThreadPoolThread(const shared_ptr<ThreadPool::Job> &job)
+ThreadPoolThread::ThreadPoolThread(const shared_ptr<ThreadPoolJob> &job)
     : mJob(job), mPool(0), mStopped(false)
 {
     setAutoDelete(false);
@@ -71,9 +71,9 @@ void ThreadPoolThread::run()
             mPool->mCond.wait(&mPool->mMutex);
         if (mStopped)
             break;
-        std::deque<shared_ptr<ThreadPool::Job> >::iterator item = mPool->mJobs.begin();
+        std::deque<shared_ptr<ThreadPoolJob> >::iterator item = mPool->mJobs.begin();
         assert(item != mPool->mJobs.end());
-        shared_ptr<ThreadPool::Job> job = *item;
+        shared_ptr<ThreadPoolJob> job = *item;
         mPool->mJobs.erase(item);
         job->mMutex.lock();
         ++mPool->mBusyThreads;
@@ -132,12 +132,12 @@ void ThreadPool::setConcurrentJobs(int concurrentJobs)
     }
 }
 
-bool ThreadPool::jobLessThan(const shared_ptr<Job> &l, const shared_ptr<Job> &r)
+bool ThreadPool::jobLessThan(const shared_ptr<ThreadPoolJob> &l, const shared_ptr<ThreadPoolJob> &r)
 {
     return static_cast<unsigned>(l->mPriority) > static_cast<unsigned>(r->mPriority);
 }
 
-void ThreadPool::start(const shared_ptr<Job> &job, int priority)
+void ThreadPool::start(const shared_ptr<ThreadPoolJob> &job, int priority)
 {
     job->mPriority = priority;
     if (priority == Guaranteed) {
@@ -198,12 +198,12 @@ ThreadPool* ThreadPool::globalInstance()
     return sGlobalInstance;
 }
 
-ThreadPool::Job::Job()
+ThreadPoolJob::ThreadPoolJob()
     : mPriority(0)
 {
 }
 
-ThreadPool::Job::~Job()
+ThreadPoolJob::~ThreadPoolJob()
 {
     // hold the mutex when deleting in order to ensure that run() is done
     MutexLocker jobLocker(&mMutex);

@@ -7,6 +7,7 @@
 
 class ThreadPoolThread;
 
+class ThreadPoolJob;
 class ThreadPool
 {
 public:
@@ -16,37 +17,21 @@ public:
     void setConcurrentJobs(int concurrentJobs);
     void clearBackLog();
 
-    class Job
-    {
-    public:
-        Job();
-        virtual ~Job();
-
-    protected:
-        virtual void run() {}
-    private:
-        int mPriority;
-        Mutex mMutex;
-
-        friend class ThreadPool;
-        friend class ThreadPoolThread;
-    };
-
     enum { Guaranteed = -1 };
 
-    void start(const shared_ptr<Job> &job, int priority = 0);
+    void start(const shared_ptr<ThreadPoolJob> &job, int priority = 0);
 
     static int idealThreadCount();
     static ThreadPool* globalInstance();
 
 private:
-    static bool jobLessThan(const shared_ptr<Job> &l, const shared_ptr<Job> &r);
+    static bool jobLessThan(const shared_ptr<ThreadPoolJob> &l, const shared_ptr<ThreadPoolJob> &r);
 
 private:
     int mConcurrentJobs;
     Mutex mMutex;
     WaitCondition mCond;
-    std::deque<shared_ptr<Job> > mJobs;
+    std::deque<shared_ptr<ThreadPoolJob> > mJobs;
     List<ThreadPoolThread*> mThreads;
     int mBusyThreads;
 
@@ -54,5 +39,23 @@ private:
 
     friend class ThreadPoolThread;
 };
+
+class ThreadPoolJob
+{
+public:
+    ThreadPoolJob();
+    virtual ~ThreadPoolJob();
+
+protected:
+    virtual void run() {}
+private:
+    int mPriority;
+    Mutex mMutex;
+
+    friend class ThreadPool;
+    friend class ThreadPoolThread;
+};
+
+
 
 #endif

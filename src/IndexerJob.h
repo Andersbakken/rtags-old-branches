@@ -20,7 +20,7 @@ struct IndexData {
     DiagnosticsMap diagnostics;
 };
 
-class IndexerJob : public Job
+class IndexerJob : public ThreadPoolJob, public enable_shared_from_this<IndexerJob>
 {
 public:
     enum Flag {
@@ -38,8 +38,8 @@ public:
     IndexerJob(const shared_ptr<Indexer> &indexer, unsigned flags,
                const Path &input, const List<ByteArray> &args,
                CXIndex index = 0 , CXTranslationUnit unit = 0);
-    IndexerJob(const QueryMessage &msg, const shared_ptr<Project> &project,
-               const Path &input, const List<ByteArray> &arguments);
+    // IndexerJob(const QueryMessage &msg, const shared_ptr<Project> &project,
+    //            const Path &input, const List<ByteArray> &arguments);
 
     int priority() const { return mFlags & Priorities; }
     shared_ptr<IndexData> data() const { return mData; }
@@ -47,8 +47,8 @@ public:
     CXIndex takeIndex();
     uint32_t fileId() const { return mFileId; }
     Path path() const { return mPath; }
-    bool isAborted() { return !indexer() && !project(); }
-    void abort() { MutexLocker lock(&mMutex); mIndexer.reset(); resetProject(); }
+    bool isAborted() { return !indexer(); }
+    void abort() { MutexLocker lock(&mMutex); mIndexer.reset(); }
     State abortIfStarted();
     List<ByteArray> arguments() const { return mArgs; }
     shared_ptr<Indexer> indexer() { MutexLocker lock(&mMutex); return mIndexer.lock(); }
@@ -113,6 +113,8 @@ private:
     time_t mParseTime;
 
     State mState;
+
+    QueryMessage mMessage;
 };
 
 #endif

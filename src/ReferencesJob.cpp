@@ -3,14 +3,14 @@
 #include "RTags.h"
 #include "CursorInfo.h"
 
-ReferencesJob::ReferencesJob(const Location &loc, const QueryMessage &query, const shared_ptr<Project> &proj)
-    : Job(query, 0, proj)
+ReferencesJob::ReferencesJob(Connection *connection, const Location &loc, const QueryMessage &query, const shared_ptr<Project> &proj)
+    : Job(connection, query, 0, proj)
 {
     locations.insert(loc);
 }
 
-ReferencesJob::ReferencesJob(const ByteArray &sym, const QueryMessage &query, const shared_ptr<Project> &proj)
-    : Job(query, 0, proj), symbolName(sym)
+ReferencesJob::ReferencesJob(Connection *connection, const ByteArray &sym, const QueryMessage &query, const shared_ptr<Project> &proj)
+    : Job(connection, query, 0, proj), symbolName(sym)
 {
 }
 
@@ -89,20 +89,6 @@ void ReferencesJob::execute()
                         references.insert(c->first);
                     }
                 }
-            }
-        }
-    }
-
-    if (!symbolName.isEmpty() && proj->grtags) {
-        Scope<const GRMap&> scope = proj->lockGRForRead();
-        const GRMap &map = scope.data();
-        const GRMap::const_iterator it = map.find(symbolName);
-        if (it != map.end()) {
-            const Map<Location, bool> &values = it->second;
-            const bool allReferences = queryFlags() & QueryMessage::ReferencesForRenameSymbol;
-            for (Map<Location, bool>::const_iterator it = values.begin(); it != values.end(); ++it) {
-                if (allReferences || it->second)
-                    references.insert(it->first);
             }
         }
     }

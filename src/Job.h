@@ -15,18 +15,17 @@ class CursorInfo;
 class Location;
 class QueryMessage;
 class Project;
-class Job : public ThreadPool::Job, public AbortInterface,
-            public enable_shared_from_this<Job>
+class Connection;
+class Job : public AbortInterface
 {
 public:
     enum Flag {
         None = 0x0,
         WriteUnfiltered = 0x1,
-        QuoteOutput = 0x2,
-        WriteBuffered = 0x4
+        QuoteOutput = 0x2
     };
     enum { Priority = 10 };
-    Job(const QueryMessage &msg, unsigned jobFlags, const shared_ptr<Project> &proj);
+    Job(Connection *connection, const QueryMessage &msg, unsigned jobFlags, const shared_ptr<Project> &proj);
     Job(unsigned jobFlags, const shared_ptr<Project> &project);
     ~Job();
 
@@ -53,7 +52,6 @@ public:
     signalslot::Signal1<const ByteArray &> &output() { return mOutput; }
     shared_ptr<Project> project() const { return mProject; }
     void resetProject() { mProject.reset(); }
-    virtual void run();
     virtual void execute() = 0;
 private:
     bool writeRaw(const ByteArray &out, unsigned flags);
@@ -65,7 +63,7 @@ private:
     List<ByteArray> *mPathFilters;
     List<RegExp> *mPathFiltersRegExp;
     int mMax;
-    ByteArray mBuffer;
+    Connection *mConnection;
 };
 
 template <int StaticBufSize>

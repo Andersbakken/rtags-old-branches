@@ -3,8 +3,8 @@
 #include "Server.h"
 #include "CursorInfo.h"
 
-CursorInfoJob::CursorInfoJob(const Location &loc, const QueryMessage &query, const shared_ptr<Project> &proj)
-    : Job(query, 0, proj), location(loc)
+CursorInfoJob::CursorInfoJob(Connection *connection, const Location &loc, const QueryMessage &query, const shared_ptr<Project> &proj)
+    : Job(connection, query, 0, proj), location(loc)
 {
 }
 

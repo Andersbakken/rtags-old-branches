@@ -9,8 +9,7 @@
 class FindSymbolsJob : public Job
 {
 public:
-    FindSymbolsJob(const QueryMessage &query, const shared_ptr<Project> &project);
-protected:
+    FindSymbolsJob(Connection *connection, const QueryMessage &query, const shared_ptr<Project> &project);
     virtual void execute();
 private:
     const ByteArray string;

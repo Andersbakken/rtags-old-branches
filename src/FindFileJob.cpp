@@ -4,8 +4,8 @@
 #include "CursorInfo.h"
 #include "FileManager.h"
 
-FindFileJob::FindFileJob(const QueryMessage &query, const shared_ptr<Project> &project)
-    : Job(query, WriteBuffered, project)
+FindFileJob::FindFileJob(Connection *connection, const QueryMessage &query, const shared_ptr<Project> &project)
+    : Job(connection, query, None, project)
 {
     const ByteArray q = query.query();
     if (!q.isEmpty()) {

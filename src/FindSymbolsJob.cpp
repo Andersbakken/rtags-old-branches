@@ -8,8 +8,8 @@ static inline unsigned jobFlags(unsigned queryFlags)
     return (queryFlags & QueryMessage::ElispList) ? Job::QuoteOutput : Job::None;
 }
 
-FindSymbolsJob::FindSymbolsJob(const QueryMessage &query, const shared_ptr<Project> &proj)
-    : Job(query, ::jobFlags(query.flags()), proj), string(query.query())
+FindSymbolsJob::FindSymbolsJob(Connection *connection, const QueryMessage &query, const shared_ptr<Project> &proj)
+    : Job(connection, query, ::jobFlags(query.flags()), proj), string(query.query())
 {
 }
 
@@ -26,18 +26,6 @@ void FindSymbolsJob::execute()
             const Set<Location> &locations = it->second;
             for (Set<Location>::const_iterator i = locations.begin(); i != locations.end(); ++i) {
                 out[*i] = true;
-            }
-        }
-    }
-    if (project()->grtags) {
-        Scope<const GRMap &> scope = project()->lockGRForRead();
-        const GRMap &map = scope.data();
-        GRMap::const_iterator it = map.find(string);
-        if (it != map.end()) {
-            const Map<Location, bool> &locations = it->second;
-            for (Map<Location, bool>::const_iterator i = locations.begin(); i != locations.end(); ++i) {
-                if (!i->second)
-                    out[i->first] = false;
             }
         }
     }

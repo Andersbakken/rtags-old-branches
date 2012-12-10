@@ -11,9 +11,8 @@ class CursorInfo;
 class ReferencesJob : public Job
 {
 public:
-    ReferencesJob(const Location &location, const QueryMessage &query, const shared_ptr<Project> &project);
-    ReferencesJob(const ByteArray &symbolName, const QueryMessage &query, const shared_ptr<Project> &project);
-protected:
+    ReferencesJob(Connection *connection, const Location &location, const QueryMessage &query, const shared_ptr<Project> &project);
+    ReferencesJob(Connection *connection, const ByteArray &symbolName, const QueryMessage &query, const shared_ptr<Project> &project);
     virtual void execute();
 private:
     Set<Location> locations;

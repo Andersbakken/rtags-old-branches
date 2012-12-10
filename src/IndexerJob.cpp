@@ -24,19 +24,18 @@ struct VerboseVisitorUserData {
 
 IndexerJob::IndexerJob(const shared_ptr<Indexer> &indexer, unsigned flags, const Path &p, const List<ByteArray> &arguments,
                        CXIndex index, CXTranslationUnit unit)
-    : Job(0, indexer->project()),
-      mFlags(flags), mTimeStamp(0), mPath(p), mFileId(Location::insertFile(p)),
+    : mFlags(flags), mTimeStamp(0), mPath(p), mFileId(Location::insertFile(p)),
       mArgs(arguments), mIndexer(indexer), mUnit(unit), mIndex(index), mDump(false), mParseTime(0),
       mState(NotStarted)
 {
 }
 
-IndexerJob::IndexerJob(const QueryMessage &msg, const shared_ptr<Project> &project,
-                       const Path &input, const List<ByteArray> &arguments)
-    : Job(msg, WriteUnfiltered|WriteBuffered, project), mFlags(0), mTimeStamp(0), mPath(input), mFileId(Location::insertFile(input)),
-      mArgs(arguments), mUnit(0), mIndex(0), mDump(true), mParseTime(0), mState(NotStarted)
-{
-}
+// IndexerJob::IndexerJob(const QueryMessage &msg, const shared_ptr<Project> &project,
+//                        const Path &input, const List<ByteArray> &arguments)
+//     : Job(msg, WriteUnfiltered, project), mFlags(0), mTimeStamp(0), mPath(input), mFileId(Location::insertFile(input)),
+//       mArgs(arguments), mUnit(0), mIndex(0), mDump(true), mParseTime(0), mState(NotStarted)
+// {
+// }
 
 void IndexerJob::inclusionVisitor(CXFile includedFile,
                                   CXSourceLocation *includeStack,
@@ -189,7 +188,7 @@ Location IndexerJob::createLocation(const CXSourceLocation &location, bool *bloc
                 PathState &state = mPaths[fileId];
                 if (state == Unset) {
                     shared_ptr<Indexer> indexer = mIndexer.lock();
-                    shared_ptr<IndexerJob> job = static_pointer_cast<IndexerJob>(shared_from_this());
+                    shared_ptr<IndexerJob> job = shared_from_this();
                     state = indexer && indexer->visitFile(fileId, job) ? Index : DontIndex;
                 }
                 if (state != Index) {
@@ -757,16 +756,17 @@ void IndexerJob::execute()
         return;
     mTimer.start();
     mData.reset(new IndexData);
-    if (mDump) {
-        assert(id() != -1);
-        if (shared_ptr<Project> p = project()) {
-            parse();
-            if (mUnit) {
-                DumpUserData u = { 0, this, !(queryFlags() & QueryMessage::NoContext) };
-                clang_visitChildren(clang_getTranslationUnitCursor(mUnit), dumpVisitor, &u);
-            }
-        }
-    } else if (mIndexer.lock()) {
+    // if (mDump) {
+    //     assert(id() != -1);
+    //     if (shared_ptr<Project> p = project()) {
+    //         parse();
+    //         if (mUnit) {
+    //             DumpUserData u = { 0, this, !(queryFlags() & QueryMessage::NoContext) };
+    //             clang_visitChildren(clang_getTranslationUnitCursor(mUnit), dumpVisitor, &u);
+    //         }
+    //     }
+    // } else
+    if (mIndexer.lock()) {
         {
             MutexLocker lock(&mMutex);
             mState = Started;
@@ -839,47 +839,47 @@ CXChildVisitResult IndexerJob::verboseVisitor(CXCursor cursor, CXCursor, CXClien
     }
 }
 
-CXChildVisitResult IndexerJob::dumpVisitor(CXCursor cursor, CXCursor, CXClientData userData)
-{
-    DumpUserData *dump = reinterpret_cast<DumpUserData*>(userData);
-    assert(dump);
-    assert(dump->job);
-    Location loc = dump->job->createLocation(cursor);
-    if (loc.fileId()) {
-        CXCursor ref = clang_getCursorReferenced(cursor);
+// CXChildVisitResult IndexerJob::dumpVisitor(CXCursor cursor, CXCursor, CXClientData userData)
+// {
+//     DumpUserData *dump = reinterpret_cast<DumpUserData*>(userData);
+//     assert(dump);
+//     assert(dump->job);
+//     Location loc = dump->job->createLocation(cursor);
+//     if (loc.fileId()) {
+//         CXCursor ref = clang_getCursorReferenced(cursor);
 
-        ByteArray out;
-        out.reserve(256);
-        int col = -1;
-        if (dump->showContext) {
-            out.append(loc.context(&col));
-            if (col != -1) {
-                out.append(ByteArray::snprintf<32>(" // %d, %d: ", col, dump->indentLevel));
-            } else {
-                out.append(ByteArray::snprintf<32>(" // %d: ", dump->indentLevel));
-            }
-        } else {
-            out.append(ByteArray(dump->indentLevel * 2, ' '));
-        }
-        out.append(RTags::cursorToString(cursor, RTags::AllCursorToStringFlags));
-        if (clang_equalCursors(ref, cursor)) {
-            out.append(" refs self");
-        } else if (!clang_equalCursors(ref, nullCursor)) {
-            out.append(" refs ");
-            out.append(RTags::cursorToString(ref, RTags::AllCursorToStringFlags));
-        }
-        dump->job->write(out);
-    }
-    ++dump->indentLevel;
-    clang_visitChildren(cursor, dumpVisitor, userData);
-    --dump->indentLevel;
-    return CXChildVisit_Continue;
-}
+//         ByteArray out;
+//         out.reserve(256);
+//         int col = -1;
+//         if (dump->showContext) {
+//             out.append(loc.context(&col));
+//             if (col != -1) {
+//                 out.append(ByteArray::snprintf<32>(" // %d, %d: ", col, dump->indentLevel));
+//             } else {
+//                 out.append(ByteArray::snprintf<32>(" // %d: ", dump->indentLevel));
+//             }
+//         } else {
+//             out.append(ByteArray(dump->indentLevel * 2, ' '));
+//         }
+//         out.append(RTags::cursorToString(cursor, RTags::AllCursorToStringFlags));
+//         if (clang_equalCursors(ref, cursor)) {
+//             out.append(" refs self");
+//         } else if (!clang_equalCursors(ref, nullCursor)) {
+//             out.append(" refs ");
+//             out.append(RTags::cursorToString(ref, RTags::AllCursorToStringFlags));
+//         }
+//         dump->job->write(out);
+//     }
+//     ++dump->indentLevel;
+//     clang_visitChildren(cursor, dumpVisitor, userData);
+//     --dump->indentLevel;
+//     return CXChildVisit_Continue;
+// }
 IndexerJob::State IndexerJob::abortIfStarted()
 {
     MutexLocker lock(&mMutex);
     if (mState == Started) {
-        resetProject();
+        // resetProject();
         mIndexer.reset();
     }
     return mState;
